@@ -1,0 +1,192 @@
+---
+title: "Building UIs with LWXGL Widgets"
+sidebarTitle: "Widgets"
+description: "Create and manage text labels, buttons, text inputs, rectangles, and image canvases using LWXGL's integer-ID element system."
+---
+
+LWXGL uses an **integer ID element system**: every widget you create is assigned a numeric ID that you choose. You can create, update, and destroy elements at any time during the loop. If you call a create function with an ID that is already in use, the existing element is automatically freed and replaced with the new one.
+
+## Element IDs
+
+IDs are non-negative integers starting at `0`. Internally, elements are stored in a `std::vector` that grows automatically, so there is no hard upper limit on IDs. That said, very sparse IDs (e.g. `0` and `99999`) will cause the vector to allocate memory for all slots in between, so prefer compact, sequential IDs.
+
+- Calling any `GCreate*` function with an existing ID **replaces** the old element.
+- `GDeleteElement(id)` removes an element and frees its memory without replacing it.
+
+```c
+void GDeleteElement(int id);
+```
+
+## Text Label
+
+```c
+void GCreateText(int id, int x, int y, int color, const char *text);
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `id` | Element ID |
+| `x`, `y` | Top-left position of the first line of text |
+| `color` | Palette index (0–15) for the text color |
+| `text` | The string to render; use `\n` for line breaks |
+
+Text is rendered with the `9x15` fixed-width font. Each line is 9 pixels wide per character and lines are spaced **16 pixels** apart vertically.
+
+```c
+/* Create a two-line label at (20, 40) in white */
+GCreateText(0, 20, 40, 15, "Hello, LWXGL!\nLine two here.");
+```
+
+## Button
+
+```c
+void GCreateButton(int id, int x, int y, int w, int h,
+                   int u, int hvr, int p,
+                   const char *label, void (*onclick)(void));
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `id` | Element ID |
+| `x`, `y` | Top-left position |
+| `w`, `h` | Width and height in pixels |
+| `u` | Packed color byte for the **normal** state |
+| `hvr` | Packed color byte for the **hover** state |
+| `p` | Packed color byte for the **pressed** state |
+| `label` | Button label string (centered automatically) |
+| `onclick` | Callback invoked on left mouse-button release; may be `NULL` |
+
+**Packed color byte format:** a single `int` where the **high nibble** (bits 7–4) is the foreground (text + border) palette index, and the **low nibble** (bits 3–0) is the background fill palette index.
+
+```
+0xFB  →  fg = 0xF = 15 (White),  bg = 0xB = 11 (Light Cyan)
+```
+
+The `onclick` callback fires when the **left mouse button is released** inside the button bounds. Buttons are not clickable while a modal dialog is open.
+
+```c
+void handle_save(void) {
+    /* save action here */
+}
+
+/* Dark-gray border/text on white; hover: light-blue on white; pressed: green on white */
+GCreateButton(1, 10, 10, 80, 28, 0x8F, 0x9F, 0xAF, "Save", handle_save);
+```
+
+## Text Input
+
+```c
+void GCreateInput(int id, int x, int y, int w, int h,
+                  int u, int hvr, int max);
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `id` | Element ID |
+| `x`, `y` | Top-left position |
+| `w` | Width in pixels, or **`-1`** for automatic width |
+| `h` | Height in pixels |
+| `u` | Packed color byte for the normal state |
+| `hvr` | Packed color byte for the hover/active state |
+| `max` | Maximum number of characters the user can type |
+
+When `w == -1`, the width is calculated automatically as `(max + 1) * 9 + 10` — enough to display all `max` characters at 9 pixels wide, plus padding.
+
+The internal buffer is always 128 bytes. `max` must be ≤ 127.
+
+A text input **only receives keystrokes when the mouse cursor is inside its bounds**. When active, a blinking underscore cursor is drawn at the end of the text. Backspace (ASCII 8) deletes the last character.
+
+Use `GGetInput` to read the current value:
+
+```c
+char *GGetInput(int id);
+```
+
+```c
+/* Create a name input field that auto-sizes for 20 characters */
+GCreateInput(2, 10, 50, -1, 24, 0x0F, 0x9F, 20);
+
+void handle_submit(void) {
+    char *name = GGetInput(2);
+    /* use name */
+}
+
+GCreateButton(3, 10, 84, 80, 28, 0x8F, 0x9F, 0xAF, "Submit", handle_submit);
+```
+
+## Rectangle
+
+```c
+void GCreateRect(int id, int x, int y, int w, int h, int fg, int bg);
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `id` | Element ID |
+| `x`, `y` | Top-left position |
+| `w`, `h` | Width and height in pixels |
+| `fg` | Border color (palette index), or **`-1`** to draw no border |
+| `bg` | Fill color (palette index), or **`-1`** to draw no fill |
+
+```c
+/* Filled dark-blue rectangle with a white border */
+GCreateRect(4, 100, 100, 200, 150, 15, 1);
+
+/* Horizontal rule — 1px tall, no border, gray fill */
+GCreateRect(5, 0, 200, 800, 1, -1, 8);
+```
+
+## Image Canvas
+
+An image canvas gives you a pixel buffer you can write to directly. Use it with the drawing primitives or manipulate pixels manually.
+
+```c
+void GCreateImage(int id, int x, int y, int w, int h);
+```
+
+After creation, use these two functions to read and update the pixel data:
+
+```c
+unsigned char *GGetImageData(int id);
+void           GUpdateImage(int id);
+```
+
+`GGetImageData` returns a pointer to a flat array of `w * h` bytes in row-major order (row 0 first). Each byte is a palette index (0–15).
+
+`GUpdateImage` performs a **diff-based update**: it compares each pixel against a cached copy from the previous call and only writes pixels that have changed to the underlying XImage. This makes it efficient to call every frame even when only a few pixels change.
+
+```c
+/* Create a 100×100 canvas at (50, 50) and fill it with Dark Green */
+GCreateImage(5, 50, 50, 100, 100);
+unsigned char *pixels = GGetImageData(5);
+for (int i = 0; i < 100 * 100; i++) pixels[i] = 2; /* 2 = Dark Green */
+GUpdateImage(5);
+```
+
+<Note>
+  `GUpdateImage` only copies **changed** pixels to the XImage by comparing each byte against the previous-frame buffer. It is safe and efficient to call `GUpdateImage` every frame — even if only one pixel changed, only that pixel is written.
+</Note>
+
+## Modal Dialogs
+
+```c
+void GSpawnModal(int type, const char *msg, void (*on_confirm)(void));
+int  GQueryModalOpen(void);
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `type` | `0` = OK button only; `1` = OK + Cancel buttons |
+| `msg` | Message text displayed in the dialog (supports `\n`) |
+| `on_confirm` | Called when the user clicks OK; may be `NULL` |
+
+While a modal is open, all buttons and input widgets stop responding to mouse and keyboard events. Use `GQueryModalOpen()` to check whether a modal is currently displayed (returns `1` if open, `0` otherwise).
+
+```c
+void on_confirm_delete(void) {
+    /* user clicked OK */
+}
+
+/* Spawn a confirmation dialog */
+GSpawnModal(1, "Delete this file?", on_confirm_delete);
+```

@@ -1,0 +1,218 @@
+---
+title: "Window Management API Reference"
+sidebarTitle: "Window API"
+description: "Complete reference for LWXGL window creation, rendering, the event loop, modal dialogs, and resource cleanup functions."
+---
+
+LWXGL exposes a small set of C functions for creating and managing a single X11 window, driving a frame loop, rendering registered elements to a double-buffered back buffer, and displaying modal dialogs. All window state is held internally by the library; your application interacts with it exclusively through the functions documented on this page.
+
+---
+
+## Window Lifecycle
+
+These functions control the creation and orderly teardown of the window and all associated X11 resources.
+
+### GCreateWindow
+
+```c
+int GCreateWindow(int w, int h, const char* name, int bgcol);
+```
+
+Opens a fixed-size X11 window of `w × h` pixels, sets its title to `name`, and records `bgcol` as the background palette index used by `GRenderWindow`. The function connects to the X display, loads the `9x15` bitmap font, allocates all 16 palette colors from the default colormap, creates a graphics context and a back-buffer pixmap, and registers `WM_DELETE_WINDOW` so that the close button can be intercepted. Minimum and maximum size hints are set to `w × h`, so the window cannot be resized by the user.
+
+<ParamField path="w" type="int" required>
+  Width of the window in pixels.
+</ParamField>
+
+<ParamField path="h" type="int" required>
+  Height of the window in pixels.
+</ParamField>
+
+<ParamField path="name" type="const char*" required>
+  Null-terminated string used as the window title.
+</ParamField>
+
+<ParamField path="bgcol" type="int" required>
+  Background palette index used to clear the back buffer each frame. Must be a value in the range 0–15 inclusive.
+</ParamField>
+
+<ParamField path="return" type="int">
+  | Value | Meaning |
+  |-------|---------|
+  | `0`   | Success — window created and mapped. |
+  | `1`   | Could not connect to the X display (`XOpenDisplay` returned `NULL`). |
+  | `2`   | The bitmap font `9x15` was not found on the X server. |
+  | `3`   | A window is already open (only one window is supported at a time). |
+</ParamField>
+
+<Warning>
+  `bgcol` must be a valid palette index in the range **0–15**. Passing a value outside this range accesses the internal color array out of bounds, producing undefined behavior.
+</Warning>
+
+---
+
+### GTerminateWindow
+
+```c
+void GTerminateWindow(void);
+```
+
+Frees all registered elements, releases the graphics context, destroys the back-buffer pixmap and stipple bitmap, frees all 16 allocated palette colors, destroys the window, and closes the display connection. This function must be called after the main loop exits to avoid resource leaks.
+
+<Warning>
+  Calling `GTerminateWindow` while the event loop is still running (i.e., before `GWindowShouldClose` returns `1`) produces undefined behavior. Always wait for the loop to exit before calling this function.
+</Warning>
+
+---
+
+## Event Loop
+
+These functions implement the per-frame event-loop pattern. You can either drive the loop yourself using `GWindowShouldClose`, `GHandleWindowEvents`, and `GRenderWindow`, or delegate entirely to `GSimpleWindowLoop`.
+
+### GWindowShouldClose
+
+```c
+int GWindowShouldClose(void);
+```
+
+Returns the value of the internal `closing` flag. Use the return value as the exit condition of a manual `while` loop.
+
+<ParamField path="return" type="int">
+  `1` when the window has been signalled to close — either because the user clicked the close button or because `GDeleteWindow` was called. `0` otherwise.
+</ParamField>
+
+---
+
+### GHandleWindowEvents
+
+```c
+void GHandleWindowEvents(void);
+```
+
+Drains the X11 event queue by calling `XPending` / `XNextEvent` in a loop and dispatches each pending event to its registered handler. This covers pointer motion, button press/release, key press/release, expose events, and the `WM_DELETE_WINDOW` client message. Must be called once per frame when using a manual loop; `GSimpleWindowLoop` calls it automatically.
+
+---
+
+### GRenderWindow
+
+```c
+void GRenderWindow(void);
+```
+
+Executes one complete render pass:
+
+1. Fills the back-buffer pixmap with the background palette color set in `GCreateWindow`.
+2. Iterates over all registered elements in ID order and calls each element's renderer.
+3. If a modal is active, draws it on top of all elements.
+4. If the debug overlay is enabled (activated automatically by `GSimpleWindowLoop`), draws the FPS and frame-time overlay.
+5. Blits the back buffer to the visible window with `XCopyArea` and calls `XSync`.
+
+---
+
+### GSimpleWindowLoop
+
+```c
+void GSimpleWindowLoop(int target_fps, void (*on_every)(int tick));
+```
+
+Runs the complete render-and-event loop at the requested frame rate. Each frame, in order:
+
+1. `GHandleWindowEvents()` — drains the X11 event queue.
+2. `GRenderWindow()` — renders the frame.
+3. `on_every(tick)` — calls your per-frame callback with the running tick counter.
+
+Between frames the loop sleeps with sub-millisecond precision to keep CPU usage low while still hitting the target frame rate. If a frame falls more than two frame periods behind, the internal timer is reset to prevent a burst of catch-up frames. The loop also enables the debug metrics overlay (FPS and frame time) for the duration of its execution.
+
+<ParamField path="target_fps" type="int" required>
+  Desired frames per second. The loop derives the frame period as `1 000 000 / target_fps` microseconds.
+</ParamField>
+
+<ParamField path="on_every" type="void (*)(int tick)" required>
+  Per-frame callback invoked after rendering. Receives the zero-based tick counter that increments once per rendered frame. Pass `NULL` if no per-frame callback is needed.
+</ParamField>
+
+<Note>
+  `GSimpleWindowLoop` blocks the calling thread until `GWindowShouldClose` returns `1`. Place all setup code (element registration, event attachment) **before** calling this function, and all cleanup code (including `GTerminateWindow`) **after** it returns.
+</Note>
+
+```c
+#include "libLWXGL.h"
+#include <stdio.h>
+
+void on_frame(int tick) {
+    /* update game state, move elements, etc. */
+    if (tick % 60 == 0) {
+        printf("one second elapsed, tick=%d\n", tick);
+    }
+}
+
+int main(void) {
+    if (GCreateWindow(800, 600, "My App", 0) != 0) return 1;
+
+    /* register elements, attach events … */
+
+    GSimpleWindowLoop(60, on_frame);
+
+    GTerminateWindow();
+    return 0;
+}
+```
+
+---
+
+## Window Close Control
+
+### GDeleteWindow
+
+```c
+void GDeleteWindow(void);
+```
+
+Signals the window to close by setting the internal `closing` flag to `1`. If a delete callback has been registered with `GEventAttachDelete`, that callback is invoked first and its return value is used as the new value of `closing` — allowing the callback to veto the close by returning `0`.
+
+---
+
+## Modal Dialogs
+
+### GSpawnModal
+
+```c
+void GSpawnModal(int type, const char* msg, void (*on_confirm)(void));
+```
+
+Displays a modal dialog box centered over the window. While the modal is visible, all widget interaction (button clicks, input focus) is suppressed. The dialog is rendered by `GRenderWindow` on top of all other elements each frame.
+
+<ParamField path="type" type="int" required>
+  Controls which buttons appear in the dialog.
+
+  | Value | Buttons shown |
+  |-------|---------------|
+  | `0`   | **OK** only |
+  | `1`   | **OK** and **Cancel** |
+</ParamField>
+
+<ParamField path="msg" type="const char*" required>
+  Null-terminated message string displayed inside the dialog. Use `\n` to break the text across multiple lines. Each line is rendered up to a maximum of approximately 31 characters before it is clipped.
+</ParamField>
+
+<ParamField path="on_confirm" type="void (*)(void)" required>
+  Callback invoked when the user clicks **OK**. Pass `NULL` if no action is needed on confirmation. The callback is **not** called when **Cancel** is clicked.
+</ParamField>
+
+<Note>
+  The modal is dismissed automatically when the user clicks either button. You do not need to call any function to close it manually.
+</Note>
+
+---
+
+### GQueryModalOpen
+
+```c
+int GQueryModalOpen(void);
+```
+
+Returns the current modal visibility state. Use this to gate application logic that should not execute while a modal is being displayed — for example, preventing game simulation from advancing while an exit-confirmation dialog is open.
+
+<ParamField path="return" type="int">
+  `1` if a modal dialog is currently displayed; `0` otherwise.
+</ParamField>

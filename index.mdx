@@ -1,20 +1,64 @@
 ---
-title: "Introduction"
-description: "Welcome to your project"
+title: "LWXGL: Lightweight X11 Graphics Library"
+sidebarTitle: "Home"
+description: "LWXGL is a minimal C shared library for building X11 GUI windows with widgets, drawing primitives, and event callbacks — no framework required."
 ---
 
-Write a short description of your product here. What it does, who it's for, and what they can accomplish with it.
+LWXGL is a lightweight C/C++ library that lets you open an X11 window, place interactive widgets, draw shapes and sprites, and handle keyboard and mouse events — all through a single, dependency-free header. Compile it once as a shared library, include `libLWXGL.h`, and you have a complete GUI toolkit in under 1,000 lines of code.
 
-<Tip>
-  Ready to make this your own? Start by editing this page. Update your `docs.json` file to customize your site. Then fill out the [Quickstart](/quickstart) page.
-</Tip>
+<CardGroup cols={2}>
+  <Card title="Installation" icon="wrench" href="/installation">
+    Build the shared library from source and install it system-wide in two commands.
+  </Card>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Open a window, add a button, and run the event loop in under 30 lines of C.
+  </Card>
+  <Card title="Guides" icon="book-open" href="/guides/window-lifecycle">
+    Understand the window lifecycle, widget system, drawing API, and color palette.
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/window">
+    Full reference for every function exported by LWXGL, with parameters and return values.
+  </Card>
+</CardGroup>
 
-<Card title="Quickstart" icon="rocket" href="/quickstart">
-  This card links to the quickstart page in your project.
-</Card>
-<Card title="Components" icon="puzzle-piece" href="https://mintlify.com/docs/components">
-  Add cards, callouts, steps, tabs, and more to design and structure your pages.
-</Card>
-<Card title="Settings" icon="gear" href="https://mintlify.com/docs/organize/settings">
-  Set your site name, branding, and navigation in the `docs.json` file.
-</Card>
+## How it works
+
+LWXGL wraps Xlib into a small set of C functions. You create a window, populate it with elements (widgets and image canvases), attach event callbacks, and drive the loop yourself — or let `GSimpleWindowLoop` manage the frame cadence for you.
+
+<Steps>
+  <Step title="Build and install the library">
+    Clone the repository and run `make && make install` to build `libLWXGL.so` and copy it to `/usr/local/lib`.
+  </Step>
+  <Step title="Include the header">
+    Add `#include <libLWXGL.h>` to your source file. The header exposes the full public API and is compatible with both C and C++.
+  </Step>
+  <Step title="Create a window">
+    Call `GCreateWindow(width, height, "Title", bgColor)` to open an X11 window with a fixed size and a background from the 16-color palette.
+  </Step>
+  <Step title="Add widgets and run the loop">
+    Create text labels, buttons, inputs, and image canvases using the `GCreate*` functions, then call `GSimpleWindowLoop` to start rendering at your target FPS.
+  </Step>
+</Steps>
+
+## Key features
+
+<CardGroup cols={2}>
+  <Card title="UI Widgets" icon="window">
+    Text labels, buttons with hover/press states, text inputs, and rectangles — all managed by an integer element ID.
+  </Card>
+  <Card title="Image Canvas" icon="image">
+    Create pixel buffers, write palette indices directly, and push them to the screen with `GUpdateImage`.
+  </Card>
+  <Card title="Drawing Primitives" icon="pen-ruler">
+    Draw rectangles, circles, lines, and RLE-encoded sprites into any image canvas element.
+  </Card>
+  <Card title="Event System" icon="bolt">
+    Attach callbacks for keypresses, mouse clicks, and window close. Query mouse position and key state at any time.
+  </Card>
+  <Card title="16-Color Palette" icon="palette">
+    A fixed CGA-inspired palette covering black through white. Use palette indices everywhere — no hex colors needed.
+  </Card>
+  <Card title="Simple Loop" icon="rotate">
+    `GSimpleWindowLoop` caps your frame rate, calls your per-frame callback, and tracks FPS — no manual timing required.
+  </Card>
+</CardGroup>

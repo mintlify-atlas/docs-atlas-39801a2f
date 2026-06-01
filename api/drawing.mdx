@@ -1,0 +1,284 @@
+---
+title: "Drawing Primitives API — Rect, Circle, Line, Sprite"
+sidebarTitle: "Drawing API"
+description: "Reference for LWXGL's GPrimitiveRect, GPrimitiveCircle, GPrimitiveLine, and GPrimitiveSprite functions that draw into image canvas elements."
+---
+
+All primitive drawing functions write into the pixel buffer of an **Image canvas element** created with `GCreateImage`. The pixel buffer stores one-byte palette indices per pixel — each value selects a colour from LWXGL's internal colour table. After issuing one or more draw calls, invoke `GUpdateImage` to flush only the changed pixels to the screen. Coordinates passed to every primitive are **canvas-relative**: they are measured from the top-left corner of the image's pixel buffer, not from the window origin.
+
+---
+
+## GPrimitiveRect
+
+```c
+void GPrimitiveRect(int id, int x, int y, int w, int h, int fg, int bg);
+```
+
+Draws a rectangle into the image canvas identified by `id`. The outermost 1-pixel border ring is painted with `fg`; the interior area is filled with `bg`. Any portion of the rectangle that falls outside the canvas bounds is silently clipped — no out-of-bounds writes occur.
+
+<Note>
+If `fg` is `-1`, it is internally promoted to the value of `bg` before rendering begins. This means the entire rectangle area — border and interior alike — is filled with `bg`, producing a solid filled rectangle with no separate border. Corner pixels always use the resolved `fg` value.
+</Note>
+
+<ParamField path="id" type="int" required>
+  Element ID of the Image canvas to draw into. Must have been created with `GCreateImage`.
+</ParamField>
+
+<ParamField path="x" type="int" required>
+  X coordinate of the rectangle's top-left corner, relative to the canvas origin.
+</ParamField>
+
+<ParamField path="y" type="int" required>
+  Y coordinate of the rectangle's top-left corner, relative to the canvas origin.
+</ParamField>
+
+<ParamField path="w" type="int" required>
+  Width of the rectangle in pixels.
+</ParamField>
+
+<ParamField path="h" type="int" required>
+  Height of the rectangle in pixels.
+</ParamField>
+
+<ParamField path="fg" type="int" required>
+  Palette index used for the 1-pixel border. Pass `-1` to promote `fg` to `bg` so the rectangle is fully filled with no distinct border.
+</ParamField>
+
+<ParamField path="bg" type="int" required>
+  Palette index used to fill the interior. Pass `-1` to leave interior pixels unchanged (only the border is drawn, provided `fg` is not also `-1`).
+</ParamField>
+
+### Example
+
+```c
+/* Create a 320×240 image canvas at window position (0, 0) */
+GCreateImage(0, 0, 0, 320, 240);
+
+/* Draw a solid white rectangle (no border) at (10, 10), size 100×60 */
+GPrimitiveRect(0, 10, 10, 100, 60, -1, 15);
+
+/* Draw a rectangle with a red border (index 4) and blue fill (index 1) */
+GPrimitiveRect(0, 120, 10, 80, 50, 4, 1);
+
+GUpdateImage(0);
+```
+
+---
+
+## GPrimitiveCircle
+
+```c
+void GPrimitiveCircle(int id, int cx, int cy, int r, int fg, int bg);
+```
+
+Draws a filled circle centred at `(cx, cy)` with radius `r` pixels. The outermost ring of pixels — those satisfying `(r-1)² ≤ dx²+dy² ≤ r²` — is painted with `fg`. All remaining pixels inside the circle are filled with `bg`. Pixels outside the canvas bounds are clipped.
+
+<Warning>
+Passing `-1` for both `fg` and `bg` is a no-op: neither border nor interior pixels are written. Make sure at least one of the two colour arguments is a valid palette index.
+</Warning>
+
+<ParamField path="id" type="int" required>
+  Element ID of the Image canvas to draw into.
+</ParamField>
+
+<ParamField path="cx" type="int" required>
+  X coordinate of the circle's centre, relative to the canvas origin.
+</ParamField>
+
+<ParamField path="cy" type="int" required>
+  Y coordinate of the circle's centre, relative to the canvas origin.
+</ParamField>
+
+<ParamField path="r" type="int" required>
+  Radius of the circle in pixels.
+</ParamField>
+
+<ParamField path="fg" type="int" required>
+  Palette index for the 1-pixel border ring. Pass `-1` to skip border rendering.
+</ParamField>
+
+<ParamField path="bg" type="int" required>
+  Palette index for the filled interior. Pass `-1` to skip fill rendering (outline-only circle).
+</ParamField>
+
+### Example
+
+```c
+GCreateImage(1, 0, 0, 200, 200);
+
+/* Solid green circle, no distinct border */
+GPrimitiveCircle(1, 100, 100, 40, -1, 2);
+
+/* Circle with white border (index 15) and dark-grey fill (index 8) */
+GPrimitiveCircle(1, 100, 100, 60, 15, 8);
+
+GUpdateImage(1);
+```
+
+---
+
+## GPrimitiveLine
+
+```c
+void GPrimitiveLine(int id, int x1, int y1, int x2, int y2, int color);
+```
+
+Draws a straight line from `(x1, y1)` to `(x2, y2)` using floating-point increments: the axis with the larger delta drives the step count, and the other axis advances by a fractional increment each step, rounded to the nearest integer. This produces a connected, single-pixel-wide line. Pixels that fall outside the canvas bounds are skipped.
+
+<Note>
+The number of steps is `max(|x2−x1|, |y2−y1|)`, so every pixel along the dominant axis is guaranteed to be written exactly once. For perfectly horizontal or vertical lines, this is equivalent to a simple scanline fill.
+</Note>
+
+<ParamField path="id" type="int" required>
+  Element ID of the Image canvas to draw into.
+</ParamField>
+
+<ParamField path="x1" type="int" required>
+  X coordinate of the line's start point, relative to the canvas origin.
+</ParamField>
+
+<ParamField path="y1" type="int" required>
+  Y coordinate of the line's start point, relative to the canvas origin.
+</ParamField>
+
+<ParamField path="x2" type="int" required>
+  X coordinate of the line's end point, relative to the canvas origin.
+</ParamField>
+
+<ParamField path="y2" type="int" required>
+  Y coordinate of the line's end point, relative to the canvas origin.
+</ParamField>
+
+<ParamField path="color" type="int" required>
+  Palette index used to paint every pixel of the line.
+</ParamField>
+
+### Example
+
+```c
+GCreateImage(2, 0, 0, 320, 240);
+
+/* Diagonal white line across the canvas */
+GPrimitiveLine(2, 0, 0, 319, 239, 15);
+
+/* Horizontal red line */
+GPrimitiveLine(2, 10, 120, 310, 120, 4);
+
+GUpdateImage(2);
+```
+
+---
+
+## GPrimitiveSprite
+
+```c
+void GPrimitiveSprite(int id, int sx, int sy, int color, const char* sprite, int scale);
+```
+
+Renders a compact RLE-encoded monochrome sprite into the image canvas, starting at canvas position `(sx, sy)`. Each logical sprite pixel expands to a `scale × scale` block of canvas pixels. Filled pixels write the given `color` palette index; transparent pixels write palette index `0` (Black).
+
+<Note>
+Sprite coordinates `sx` and `sy` are canvas-relative, not window-relative. They are measured from the top-left corner of the image pixel buffer created with `GCreateImage`.
+</Note>
+
+<Tip>
+Use `scale=1` for a true 1:1 rendering where each sprite token maps to exactly one canvas pixel. Use `scale=2` or `scale=4` to achieve pixel-art style rendering where each logical sprite pixel becomes a 2×2 or 4×4 block.
+</Tip>
+
+<ParamField path="id" type="int" required>
+  Element ID of the Image canvas to draw into.
+</ParamField>
+
+<ParamField path="sx" type="int" required>
+  X coordinate of the sprite's top-left corner within the canvas.
+</ParamField>
+
+<ParamField path="sy" type="int" required>
+  Y coordinate of the sprite's top-left corner within the canvas.
+</ParamField>
+
+<ParamField path="color" type="int" required>
+  Palette index written for every filled (`#`) pixel in the sprite.
+</ParamField>
+
+<ParamField path="sprite" type="const char*" required>
+  Null-terminated RLE sprite string. See the [RLE Token Reference](#rle-token-reference) below for the full grammar.
+</ParamField>
+
+<ParamField path="scale" type="int" required>
+  Pixel scale factor. `1` renders each sprite pixel as one canvas pixel; `2` renders each sprite pixel as a 2×2 block; `N` renders each sprite pixel as an `N×N` block.
+</ParamField>
+
+### RLE Token Reference
+
+The sprite string is parsed left-to-right. A decimal digit prefix accumulates a **repeat count** that is consumed by the very next non-digit token. Tokens may be nested inside bracket groups.
+
+| Token | Meaning |
+|---|---|
+| `#` | **Filled pixel.** Writes `color` to the current canvas position and advances X by `scale`. |
+| `.` | **Transparent pixel.** Writes palette index `0` (Black) and advances X by `scale`. |
+| `$` | **Newline.** Resets X to `sx` and advances Y by `scale` × (repeat count, default 1). |
+| `>` | **Column skip.** Advances X by `scale` without writing any colour. Prefix with a count to skip multiple columns: `3>` advances X by `3 × scale`. |
+| `N…` | **Digit prefix / repeat count.** One or more decimal digits before any token repeat that token N times: `5#` draws five filled pixels; `3>` skips three columns. |
+| `[…]` | **Repeat group.** Tokens enclosed in brackets form a group. Prefix the opening bracket with a count to repeat the whole group: `3[#.]` expands to `#.#.#.`. |
+| `!` | **Terminator.** Stops parsing immediately. Any characters after `!` are ignored. |
+
+<Warning>
+The `.` token writes palette index `0` (Black) — it does **not** preserve whatever was previously in the canvas buffer at that position. If you need transparency that leaves the background intact, manually manage a separate background layer and composite using `GGetImageData`.
+</Warning>
+
+### Cross Sprite Example
+
+```c
+/* 5×5 cross/plus sprite:
+   ..#..
+   ..#..
+   #####
+   ..#..
+   ..#.. */
+const char *cross = "2.#.2.$2.#.2.$5#$2.#.2.$2.#.2.!";
+
+/* Render at canvas position (10, 10), white (index 15), 3× scale */
+GPrimitiveSprite(5, 10, 10, 15, cross, 3);
+
+GUpdateImage(5);
+```
+
+Each row of the cross is a separate RLE run terminated by `$`. The prefix `2.` expands to `..`, the middle `#` is the vertical bar pixel, and the second `2.` closes the row. Row three uses `5#` to draw the full horizontal bar in a single token.
+
+---
+
+## Complete Example
+
+The snippet below creates a 320×240 image canvas, paints a background, draws a circle, draws a diagonal line across the scene, and flushes everything to the screen in one `GUpdateImage` call.
+
+```c
+#include "libLWXGL.h"
+
+void draw_scene(void) {
+    /* 1. Create a 320×240 image canvas at window position (0, 0), element ID 0 */
+    GCreateImage(0, 0, 0, 320, 240);
+
+    /* 2. Filled dark-grey background rectangle covering the entire canvas.
+          fg == -1 promotes to bg, so the whole area is filled with index 8. */
+    GPrimitiveRect(0, 0, 0, 320, 240, -1, 8);
+
+    /* 3. Circle with a white border (index 15) and blue fill (index 1),
+          centred at (160, 120) with radius 60. */
+    GPrimitiveCircle(0, 160, 120, 60, 15, 1);
+
+    /* 4. White diagonal line from top-left to bottom-right of the canvas */
+    GPrimitiveLine(0, 0, 0, 319, 239, 15);
+
+    /* 5. Flush changed pixels to the display */
+    GUpdateImage(0);
+}
+
+int main(void) {
+    GCreateWindow(320, 240, "LWXGL Demo", 0);
+    draw_scene();
+    GSimpleWindowLoop(60, NULL);
+    GTerminateWindow();
+    return 0;
+}
+```

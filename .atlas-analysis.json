@@ -1,0 +1,107 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "LWXGL",
+  "projectDescription": "A lightweight C shared library for creating X11 GUI windows with widgets, drawing primitives, and event handling.",
+  "theme": "aspen",
+  "primaryColor": "#3B82F6",
+  "lightColor": "#DBEAFE",
+  "darkColor": "#1E3A5F",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/window-lifecycle",
+              "guides/widgets",
+              "guides/drawing",
+              "guides/events",
+              "guides/color-system"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Window",
+            "pages": [
+              "api/window"
+            ]
+          },
+          {
+            "group": "Widgets",
+            "pages": [
+              "api/widgets"
+            ]
+          },
+          {
+            "group": "Drawing",
+            "pages": [
+              "api/drawing"
+            ]
+          },
+          {
+            "group": "Events & Input",
+            "pages": [
+              "api/events"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Single-header C API — include libLWXGL.h and link to the shared library",
+    "Built-in UI widgets: text labels, buttons, text input fields, and rectangles",
+    "Image canvas element with per-pixel access for custom rendering",
+    "Primitive drawing API: rectangles, circles, lines, and RLE sprites",
+    "Fixed 16-color palette mapped from the classic CGA/ANSI set",
+    "Event callbacks for keyboard, mouse click, mouse motion, and window close",
+    "Simple game-loop helper (GSimpleWindowLoop) with FPS cap and tick counter",
+    "Modal dialog support with OK / Cancel variants",
+    "Debug overlay showing frame time and FPS (toggled with F12)"
+  ],
+  "publicApiSurface": [
+    "GCreateWindow(int w, int h, const char* name, int bgcol)",
+    "GTerminateWindow()",
+    "GWindowShouldClose()",
+    "GHandleWindowEvents()",
+    "GRenderWindow()",
+    "GSimpleWindowLoop(int target_fps, void (*on_every)(int))",
+    "GDeleteWindow()",
+    "GCreateText(int id, int x, int y, int color, const char* text)",
+    "GCreateButton(int id, int x, int y, int w, int h, int u, int hvr, int p, const char* label, void (*onclick)(void))",
+    "GCreateInput(int id, int x, int y, int w, int h, int u, int hvr, int max)",
+    "GGetInput(int id)",
+    "GCreateRect(int id, int x, int y, int w, int h, int fg, int bg)",
+    "GCreateImage(int id, int x, int y, int w, int h)",
+    "GGetImageData(int id)",
+    "GUpdateImage(int id)",
+    "GDeleteElement(int index)",
+    "GPrimitiveRect(int id, int x, int y, int w, int h, int fg, int bg)",
+    "GPrimitiveCircle(int id, int cx, int cy, int r, int fg, int bg)",
+    "GPrimitiveLine(int id, int x1, int y1, int x2, int y2, int color)",
+    "GPrimitiveSprite(int id, int sx, int sy, int color, const char* sprite, int scale)",
+    "GEventAttachKey(void (*Key)(int key))",
+    "GEventAttachClick(void (*Click)(int x, int y, int btn))",
+    "GEventAttachDelete(int (*on_exit)())",
+    "GQueryMouse(int* x, int* y, int* btn)",
+    "GQueryKeyboard()",
+    "GQueryKeyDown(int ch)",
+    "GSpawnModal(int type, const char* msg, void (*on_confirm)())",
+    "GQueryModalOpen()",
+    "GKeyLeft, GKeyRight, GKeyUp, GKeyDown, GKeyFnBase"
+  ]
+}

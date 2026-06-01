@@ -1,0 +1,398 @@
+---
+title: "Widget API Reference — Text, Button, Input, Rect, Image"
+sidebarTitle: "Widgets API"
+description: "Complete reference for LWXGL element creation: GCreateText, GCreateButton, GCreateInput, GCreateRect, GCreateImage, GGetImageData, GUpdateImage, and GDeleteElement."
+---
+
+LWXGL organizes every visible object in a window as an **element** stored in a flat integer-indexed slot array. You create elements by calling the appropriate `GCreate*` function with a unique integer ID. Elements are rendered in slot order each time `GRenderWindow` is called, and they can be destroyed individually with `GDeleteElement`. This page covers every widget type in the library: text labels, buttons, input fields, rectangles, and image canvases.
+
+---
+
+## GDeleteElement
+
+```c
+void GDeleteElement(int index);
+```
+
+Frees the element stored at the given slot index and sets that slot to `NULL`. For **Image** elements (type 4), the function additionally calls `XDestroyImage` on the backing `XImage` and releases both the current-frame pixel buffer (`data`) and the previous-frame diff buffer (`prev`). For all other element types, only the element struct itself is freed.
+
+The function is a no-op when the slot is already `NULL` or when `index` is out of range, so it is safe to call defensively without checking first.
+
+<Warning>
+After calling `GDeleteElement`, the slot at `index` is `NULL`. Any subsequent read from `elements[index]` — such as calling `GGetInput(index)` or `GGetImageData(index)` — will dereference a null pointer and crash. Never access element data after deletion.
+</Warning>
+
+<ParamField path="index" type="int" required>
+  The integer ID of the element to delete. Must be a previously-registered slot index. Out-of-range values and already-`NULL` slots are silently ignored.
+</ParamField>
+
+---
+
+## GCreateText
+
+```c
+void GCreateText(int id, int x, int y, int color, const char* text);
+```
+
+Creates a text label element at the given position. The label is drawn using the X11 **9x15 bitmap font** each time `GRenderWindow` is called. Multi-line text is supported: the renderer splits on `\n` characters and advances the baseline by **16 pixels** per line. The `text` pointer is stored directly inside the element struct — it is **not** copied — so the string must remain valid for the entire lifetime of the element.
+
+<Note>
+Because the text pointer is stored by reference, passing a pointer to a local stack buffer that goes out of scope will result in undefined behaviour. Use string literals or heap-allocated strings that outlive the window.
+</Note>
+
+<ParamField path="id" type="int" required>
+  Unique element ID. If a slot at this ID already exists it is deleted and replaced.
+</ParamField>
+
+<ParamField path="x" type="int" required>
+  Left edge of the text in pixels, measured from the window's left edge.
+</ParamField>
+
+<ParamField path="y" type="int" required>
+  Top edge of the text in pixels, measured from the window's top edge. Internally the renderer adds 11 px to `y` to align the font baseline correctly, so `y=0` places the top of the glyph at the very top of the window.
+</ParamField>
+
+<ParamField path="color" type="int" required>
+  Palette index (0–15) used to draw the text. The palette is the standard 16-color CGA-style palette shared across all LWXGL rendering.
+</ParamField>
+
+<ParamField path="text" type="const char*" required>
+  Null-terminated string to display. Use `\n` to break the label across multiple lines. The pointer is stored directly — do not free or reuse the buffer while the element is alive.
+</ParamField>
+
+**Example — multi-line label**
+
+```c
+/* Static storage guarantees the pointer stays valid. */
+static const char *msg = "Hello, LWXGL!\nLine two here.";
+
+GCreateText(0, 20, 30, 15, msg);   /* color 15 = White */
+```
+
+---
+
+## GCreateButton
+
+```c
+void GCreateButton(int id, int x, int y, int w, int h,
+                   int u, int hvr, int p,
+                   const char* label, void (*onclick)(void));
+```
+
+Creates a clickable button widget. The button has three visual states — **normal**, **hover**, and **pressed** — each driven by a packed color byte. The label is centered horizontally and vertically inside the button rectangle using the 9x15 font. The `onclick` callback is fired when the left mouse button is **released** while the cursor is inside the button's bounds.
+
+<Note>
+**Packed color format:** each color parameter encodes two palette indices in a single byte. The **high nibble** (bits 7–4) is the foreground (border + text) color; the **low nibble** (bits 3–0) is the background (fill) color. For example, `0x7F` gives foreground index 7 (Light Gray) and background index 15 (White). Use the expression `(fg << 4) | bg` to build the value at runtime.
+</Note>
+
+<ParamField path="id" type="int" required>
+  Unique element ID.
+</ParamField>
+
+<ParamField path="x" type="int" required>
+  X coordinate of the button's top-left corner in pixels.
+</ParamField>
+
+<ParamField path="y" type="int" required>
+  Y coordinate of the button's top-left corner in pixels.
+</ParamField>
+
+<ParamField path="w" type="int" required>
+  Width of the button in pixels.
+</ParamField>
+
+<ParamField path="h" type="int" required>
+  Height of the button in pixels.
+</ParamField>
+
+<ParamField path="u" type="int" required>
+  Packed color byte for the **normal** (unhovered, unpressed) state. High nibble = foreground, low nibble = background.
+</ParamField>
+
+<ParamField path="hvr" type="int" required>
+  Packed color byte for the **hover** state, applied when the mouse cursor is inside the button bounds and no mouse button is held.
+</ParamField>
+
+<ParamField path="p" type="int" required>
+  Packed color byte for the **pressed** state, applied while the left mouse button is held down inside the button bounds.
+</ParamField>
+
+<ParamField path="label" type="const char*" required>
+  Null-terminated string rendered centered inside the button. The pointer is stored by reference — do not free the string while the element is alive.
+</ParamField>
+
+<ParamField path="onclick" type="void (*)(void)" required>
+  Callback invoked when the user releases the left mouse button while the cursor is within the button's bounding rectangle. Pass `NULL` for no action.
+</ParamField>
+
+**Example — button with annotated color states**
+
+```c
+void on_submit(void) {
+    /* called on left-button release inside the button */
+}
+
+/*
+ * u   = 0x08  -> normal:  fg=0 (Black),      bg=8 (Dark Gray)
+ * hvr = 0x0F  -> hover:   fg=0 (Black),      bg=15 (White)
+ * p   = 0x80  -> pressed: fg=8 (Dark Gray),  bg=0 (Black)
+ */
+GCreateButton(
+    1,          /* id            */
+    100, 200,   /* x, y          */
+    120, 30,    /* w, h          */
+    0x08,       /* normal color  */
+    0x0F,       /* hover color   */
+    0x80,       /* pressed color */
+    "Submit",
+    on_submit
+);
+```
+
+---
+
+## GCreateInput
+
+```c
+void GCreateInput(int id, int x, int y, int w, int h,
+                  int u, int hvr, int max);
+```
+
+Creates a single-line text input field. The widget accepts printable ASCII characters (codes 32–126) and backspace when the mouse cursor is positioned within the element's bounding rectangle. Typed characters are appended to an internal fixed-size buffer of 128 bytes; `max` limits how many characters the user can enter. When the cursor is inside the field, a blinking `_` caret is appended to the displayed text.
+
+<Note>
+The input field only captures keystrokes when the mouse cursor is **within the element's bounds** at the time the key event fires. There is no explicit focus mechanism — move the cursor over the field to type into it.
+</Note>
+
+<ParamField path="id" type="int" required>
+  Unique element ID.
+</ParamField>
+
+<ParamField path="x" type="int" required>
+  X coordinate of the field's top-left corner in pixels.
+</ParamField>
+
+<ParamField path="y" type="int" required>
+  Y coordinate of the field's top-left corner in pixels.
+</ParamField>
+
+<ParamField path="w" type="int" required>
+  Width of the field in pixels. Pass `-1` to use automatic sizing: the width is computed as `(max + 1) * 9 + 10` pixels, which provides exactly enough room for `max` characters at the 9-pixel font pitch plus 5 px of left/right padding.
+</ParamField>
+
+<ParamField path="h" type="int" required>
+  Height of the field in pixels.
+</ParamField>
+
+<ParamField path="u" type="int" required>
+  Packed color byte (high nibble = foreground, low nibble = background) for the **normal** (cursor-outside) state.
+</ParamField>
+
+<ParamField path="hvr" type="int" required>
+  Packed color byte for the **active** (cursor-inside) state.
+</ParamField>
+
+<ParamField path="max" type="int" required>
+  Maximum number of characters the user may type. The internal buffer is always 128 bytes regardless of this value; `max` must therefore be ≤ 127 to leave room for the null terminator.
+</ParamField>
+
+**Example — input field with auto width**
+
+```c
+/*
+ * w = -1  -> auto width: (16 + 1) * 9 + 10 = 163 px for max=16 chars
+ * u   = 0x0F  -> normal:  fg=0 (Black), bg=15 (White)
+ * hvr = 0x0E  -> active:  fg=0 (Black), bg=14 (Yellow)
+ */
+GCreateInput(
+    2,        /* id   */
+    20, 100,  /* x, y */
+    -1, 24,   /* w=-1 (auto), h */
+    0x0F,     /* normal color   */
+    0x0E,     /* hover color    */
+    16        /* max chars      */
+);
+```
+
+---
+
+## GGetInput
+
+```c
+char* GGetInput(int id);
+```
+
+Returns a pointer to the internal 128-byte input buffer belonging to the `InputElement` at the given `id`. The buffer is always null-terminated. You can read the current contents at any time — typically inside a button's `onclick` callback to act on what the user typed.
+
+<ParamField path="id" type="int" required>
+  The element ID of an existing input field created with `GCreateInput`.
+</ParamField>
+
+**Example — read input value in a button callback**
+
+```c
+void on_confirm(void) {
+    char *name = GGetInput(2);   /* id 2 is the input field */
+    printf("User entered: %s\n", name);
+}
+
+GCreateButton(3, 200, 100, 80, 24, 0x0F, 0x0E, 0x80,
+              "OK", on_confirm);
+```
+
+---
+
+## GCreateRect
+
+```c
+void GCreateRect(int id, int x, int y, int w, int h, int fg, int bg);
+```
+
+Creates a rectangle widget. Unlike buttons and inputs, `fg` and `bg` are **direct palette indices** (0–15), not packed bytes. The fill and border are drawn independently — pass `-1` for either to skip that part of the rendering. This makes `GCreateRect` suitable for backgrounds, separators, and decorative borders.
+
+<ParamField path="id" type="int" required>
+  Unique element ID.
+</ParamField>
+
+<ParamField path="x" type="int" required>
+  X coordinate of the rectangle's top-left corner in pixels.
+</ParamField>
+
+<ParamField path="y" type="int" required>
+  Y coordinate of the rectangle's top-left corner in pixels.
+</ParamField>
+
+<ParamField path="w" type="int" required>
+  Width of the rectangle in pixels.
+</ParamField>
+
+<ParamField path="h" type="int" required>
+  Height of the rectangle in pixels.
+</ParamField>
+
+<ParamField path="fg" type="int" required>
+  Palette index (0–15) for the **border** drawn with `XDrawRectangle`. Pass `-1` to omit the border entirely.
+</ParamField>
+
+<ParamField path="bg" type="int" required>
+  Palette index (0–15) for the **fill** drawn with `XFillRectangle`. Pass `-1` to omit the fill (transparent background).
+</ParamField>
+
+**Example — filled panel with a border**
+
+```c
+/* Filled Dark Gray panel (index 8) with a White border (index 15) */
+GCreateRect(4, 10, 10, 300, 200, 15, 8);
+
+/* Border-only frame — no fill */
+GCreateRect(5, 10, 10, 300, 200, 15, -1);
+
+/* Filled area — no border */
+GCreateRect(6, 10, 10, 300, 200, -1, 8);
+```
+
+---
+
+## GCreateImage
+
+```c
+void GCreateImage(int id, int x, int y, int w, int h);
+```
+
+Creates an image canvas element backed by an `XImage` allocated with `XCreateImage`. LWXGL allocates two pixel buffers at creation time:
+
+- **`data`** — the writable current-frame buffer (`w * h` bytes). Write palette indices here to paint the canvas.
+- **`prev`** — the previous-frame snapshot buffer (`w * h` bytes) used by `GUpdateImage` for diff-based rendering.
+
+A third internal buffer (`imgdata`) holds the raw pixel data that `XPutImage` reads from, sized `h * bytes_per_line` bytes as required by Xlib.
+
+<ParamField path="id" type="int" required>
+  Unique element ID.
+</ParamField>
+
+<ParamField path="x" type="int" required>
+  X coordinate of the canvas's top-left corner within the window, in pixels.
+</ParamField>
+
+<ParamField path="y" type="int" required>
+  Y coordinate of the canvas's top-left corner within the window, in pixels.
+</ParamField>
+
+<ParamField path="w" type="int" required>
+  Canvas width in pixels. Determines the stride: `index = px + py * w`.
+</ParamField>
+
+<ParamField path="h" type="int" required>
+  Canvas height in pixels.
+</ParamField>
+
+**Example — create a 100×100 canvas at position (50, 50)**
+
+```c
+GCreateImage(5, 50, 50, 100, 100);
+```
+
+---
+
+## GGetImageData
+
+```c
+unsigned char* GGetImageData(int id);
+```
+
+Returns a pointer to the writable pixel buffer (`data`) for the image canvas at the given `id`. The buffer is `width * height` bytes, laid out in **row-major order**: the byte at coordinates *(x, y)* is located at index `x + y * width`. Each byte encodes a palette index in the range 0–15.
+
+Write palette indices into this buffer to paint the canvas, then call `GUpdateImage` to propagate the changes to the underlying `XImage` before the next `GRenderWindow` call.
+
+<ParamField path="id" type="int" required>
+  The element ID of an existing image canvas created with `GCreateImage`.
+</ParamField>
+
+**Example — fill a 100×100 canvas with Dark Green (palette index 2)**
+
+```c
+unsigned char *pixels = GGetImageData(5);
+for (int y = 0; y < 100; y++)
+    for (int x = 0; x < 100; x++)
+        pixels[x + y * 100] = 2; /* Dark Green */
+```
+
+<Tip>
+To clear a canvas efficiently, use `memset(pixels, 0, width * height)` to set every pixel to palette index 0 (Black) in a single call.
+</Tip>
+
+---
+
+## GUpdateImage
+
+```c
+void GUpdateImage(int id);
+```
+
+Scans the writable pixel buffer for every pixel that differs from the previous-frame snapshot, writes changed pixels into the backing `XImage` via the Xlib `put_pixel` function, and updates the snapshot. Pixels that have not changed are skipped entirely.
+
+Call `GUpdateImage` **after** writing new pixel data and **before** calling `GRenderWindow`. Because only changed pixels are processed, the function is efficient enough to call every frame even for large canvases where most pixels are static.
+
+<ParamField path="id" type="int" required>
+  The element ID of an existing image canvas created with `GCreateImage`.
+</ParamField>
+
+**Example — update the canvas each frame**
+
+```c
+void on_every(int frame) {
+    unsigned char *pixels = GGetImageData(5);
+
+    /* Draw a moving vertical line */
+    int col = frame % 100;
+    for (int y = 0; y < 100; y++)
+        pixels[col + y * 100] = 10; /* Bright Green */
+
+    GUpdateImage(5);   /* sync changes to the XImage */
+    /* GRenderWindow() will be called by GSimpleWindowLoop */
+}
+```
+
+<Note>
+`GUpdateImage` only updates the internal `XImage` buffer. The canvas is not visible on screen until `GRenderWindow` is called, which blits the `XImage` to the window via `XPutImage`.
+</Note>

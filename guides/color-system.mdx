@@ -1,0 +1,137 @@
+---
+title: "Using the LWXGL 16-Color Palette"
+sidebarTitle: "Color System"
+description: "LWXGL uses a fixed 16-color CGA-inspired palette. Learn how to use palette indices and packed color bytes across all drawing and widget APIs."
+---
+
+LWXGL maps all colors through a fixed 16-entry palette. Every color you specify is an **index from 0 to 15** — there are no hex color codes, RGB structs, or named color strings in the API. On startup, `GCreateWindow` allocates all 16 palette entries in the X11 colormap, and they remain valid for the lifetime of the window.
+
+## Palette Reference
+
+| Index | Name | Approx RGB |
+|-------|------|------------|
+| `0` | Black | `#000000` |
+| `1` | Dark Blue | `#0303AD` |
+| `2` | Dark Green | `#00AA00` |
+| `3` | Dark Cyan | `#00A8A8` |
+| `4` | Dark Red | `#BA0606` |
+| `5` | Dark Magenta | `#A800A8` |
+| `6` | Orange | `#E67E22` |
+| `7` | Light Gray | `#A8A8A8` |
+| `8` | Dark Gray | `#555753` |
+| `9` | Light Blue | `#5757FF` |
+| `10` | Light Green | `#55FF55` |
+| `11` | Light Cyan | `#60F0F0` |
+| `12` | Light Red | `#FF5555` |
+| `13` | Light Magenta | `#F054F0` |
+| `14` | Yellow | `#F4F236` |
+| `15` | White | `#FFFFFF` |
+
+## Direct Color Indices
+
+Most of the API accepts a plain `int` palette index:
+
+<CardGroup cols={2}>
+  <Card title="Text & Rectangles" icon="font">
+    `GCreateText` color, `GCreateRect` fg/bg
+  </Card>
+  <Card title="Drawing Primitives" icon="pen-nib">
+    `GPrimitiveLine`, `GPrimitiveRect`, `GPrimitiveCircle` fg/bg, `GPrimitiveSprite` color
+  </Card>
+  <Card title="Image Pixel Data" icon="image">
+    Each byte in the `GGetImageData` buffer is a direct palette index
+  </Card>
+  <Card title="Window Background" icon="window">
+    `GCreateWindow` bgcol parameter
+  </Card>
+</CardGroup>
+
+Pass the index as a plain integer literal or a `#define` constant:
+
+```c
+/* Fill 10 pixels with Orange (index 6) */
+unsigned char *pixels = GGetImageData(0);
+for (int i = 0; i < 10; i++) pixels[i] = 6;
+
+/* White text on a dark background */
+GCreateText(1, 20, 20, 15, "Score: 0");
+
+/* Dark-red border, dark-blue fill */
+GCreateRect(2, 50, 50, 100, 60, 4, 1);
+```
+
+## Packed Color Bytes
+
+Two widget creation functions — `GCreateButton` and `GCreateInput` — accept **packed color bytes** instead of separate fg/bg parameters. A packed color is a single `int` where:
+
+- **High nibble** (bits 7–4): foreground palette index (text color and border color)
+- **Low nibble** (bits 3–0): background palette index (fill color)
+
+```
+Packed value 0x7F:
+  High nibble = 0x7 = 7  → Light Gray  (foreground)
+  Low nibble  = 0xF = 15 → White       (background)
+
+Packed value 0x0A:
+  High nibble = 0x0 = 0  → Black       (foreground)
+  Low nibble  = 0xA = 10 → Light Green (background)
+```
+
+Internally LWXGL extracts the two components with the macros:
+
+```c
+#define H(b)  (((b) >> 4) & 0x0F)   /* high nibble → foreground */
+#define L(b)  ((b) & 0x0F)           /* low nibble  → background */
+```
+
+You can define your own helper macro to assemble packed values from named indices:
+
+```c
+#define PACK_COLOR(fg, bg) (((fg) << 4) | (bg))
+
+/* Button: normal = gray text on white, hover = light-blue on white, pressed = green on white */
+GCreateButton(0, 10, 10, 80, 28,
+    PACK_COLOR(7, 15),   /* normal  */
+    PACK_COLOR(9, 15),   /* hover   */
+    PACK_COLOR(10, 15),  /* pressed */
+    "OK", my_callback);
+
+/* Input: black text on white; hover: dark-gray text on light-cyan */
+GCreateInput(1, 10, 50, -1, 24,
+    PACK_COLOR(0, 15),   /* normal */
+    PACK_COLOR(8, 11),   /* hover  */
+    20);
+```
+
+## Background Color
+
+The `bgcol` parameter of `GCreateWindow` is a direct palette index. It determines the color used to clear the entire window at the start of every `GRenderWindow` call — effectively the "canvas background" behind all elements.
+
+```c
+GCreateWindow(800, 600, "My App", 8); /* Dark Gray background */
+```
+
+`GCreateRect` also accepts direct fg/bg indices with `-1` as an opt-out:
+
+```c
+/* Fill only — no border */
+GCreateRect(3, 0, 0, 800, 600, -1, 1);  /* Dark Blue panel, no border */
+
+/* Border only — no fill */
+GCreateRect(4, 10, 10, 200, 150, 15, -1); /* White border, transparent interior */
+```
+
+<Tip>
+  Define named constants for the palette indices you use most often. This makes your code far easier to read and update later — especially if you want to retheme your UI by changing a single `#define`.
+
+  ```c
+  #define COL_BG        8   /* Dark Gray */
+  #define COL_TEXT      15  /* White */
+  #define COL_ACCENT    9   /* Light Blue */
+  #define COL_DANGER    4   /* Dark Red */
+  #define COL_SUCCESS   10  /* Light Green */
+
+  GCreateText(0, 20, 20, COL_TEXT, "Status: OK");
+  GCreateRect(1, 0, 0, 800, 4, -1, COL_ACCENT); /* accent bar */
+  ```
+</Tip>

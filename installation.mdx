@@ -1,0 +1,135 @@
+---
+title: "Install LWXGL on Linux"
+sidebarTitle: "Installation"
+description: "Build libLWXGL.so from source with g++ and Xlib, then install the shared library and header system-wide using make install."
+---
+
+Building LWXGL from source produces two artefacts that are copied to standard system locations: the shared library **`/usr/local/lib/libLWXGL.so`** and the public header **`/usr/local/include/libLWXGL.h`**. Once installed, any C or C++ program on the same machine can include the header and link against the library with `-lLWXGL`.
+
+## Prerequisites
+
+You need a C++ compiler and the X11 development headers. LWXGL's `Makefile` invokes `g++` directly.
+
+**Debian / Ubuntu:**
+
+```bash
+sudo apt install g++ libx11-dev
+```
+
+**Fedora / RHEL / CentOS:**
+
+```bash
+sudo dnf install gcc-c++ libX11-devel
+```
+
+No other third-party libraries are required. The build links only against the system `libX11` (`-lX11`), which ships with `libx11-dev` / `libX11-devel`.
+
+## Build and Install
+
+<Steps>
+  <Step title="Clone the repository">
+    Download the source and enter the project directory:
+
+    ```bash
+    git clone https://github.com/DressedAlarm184/LWXGL.git && cd LWXGL
+    ```
+  </Step>
+
+  <Step title="Build the shared library">
+    Run the `build` Make target to compile `libLWXGL.so` into the repository root:
+
+    ```bash
+    make build
+    ```
+
+    This executes the following compiler invocation exactly as written in the `Makefile`:
+
+    ```bash
+    g++ -fPIC -shared -O2 -o libLWXGL.so src/main.cc -lX11 -fvisibility=hidden
+    ```
+
+    Flags explained:
+
+    | Flag | Purpose |
+    |------|---------|
+    | `-fPIC` | Position-independent code, required for shared libraries |
+    | `-shared` | Produce a shared object rather than an executable |
+    | `-O2` | Standard optimisation level |
+    | `-lX11` | Link against the system Xlib |
+    | `-fvisibility=hidden` | Hide all symbols by default; only functions marked `__attribute__((visibility("default")))` are exported |
+
+    After a successful build you will see `libLWXGL.so` in the current directory.
+  </Step>
+
+  <Step title="Install system-wide">
+    Copy the library and header to standard system paths and refresh the dynamic linker cache:
+
+    ```bash
+    make install
+    ```
+
+    This runs:
+
+    ```bash
+    sudo cp libLWXGL.so /usr/local/lib
+    sudo cp src/libLWXGL.h /usr/local/include
+    sudo ldconfig
+    ```
+
+    `ldconfig` updates `/etc/ld.so.cache` so the dynamic linker can find `libLWXGL.so` by its `-lLWXGL` short name.
+  </Step>
+</Steps>
+
+## Compiling Your Program
+
+After installation, link your program against LWXGL with `-lLWXGL`. No `-I` or `-L` flags are needed because the header and library are in the standard search paths.
+
+With `gcc` (for C programs):
+
+```c
+gcc -o myapp myapp.c -lLWXGL
+```
+
+With `g++` (for C++ programs):
+
+```cpp
+g++ -o myapp myapp.cpp -lLWXGL
+```
+
+<Tip>
+  If you see **`error while loading shared libraries: libLWXGL.so: cannot open shared object file`** at runtime, the dynamic linker cache may be stale. Run `sudo ldconfig` to rebuild it. Alternatively, point the linker at the library directly for the current shell session:
+
+  ```bash
+  export LD_LIBRARY_PATH=/usr/local/lib
+  ./myapp
+  ```
+</Tip>
+
+## Manual Installation (No sudo)
+
+If you do not have root access you can install LWXGL into a user-local prefix instead.
+
+```bash
+# Build as normal
+make build
+
+# Copy to a local directory, e.g. ~/.local
+mkdir -p ~/.local/lib ~/.local/include
+cp libLWXGL.so ~/.local/lib/
+cp src/libLWXGL.h ~/.local/include/
+```
+
+Then tell the compiler and linker where to find the files:
+
+```bash
+gcc -o myapp myapp.c -I$HOME/.local/include -L$HOME/.local/lib -lLWXGL
+```
+
+And set `LD_LIBRARY_PATH` before running your program so the dynamic linker resolves `libLWXGL.so` at runtime:
+
+```bash
+export LD_LIBRARY_PATH=$HOME/.local/lib:$LD_LIBRARY_PATH
+./myapp
+```
+
+You can add the `export` line to your `~/.bashrc` or `~/.profile` to make the setting permanent.

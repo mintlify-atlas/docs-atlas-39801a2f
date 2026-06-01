@@ -1,0 +1,81 @@
+---
+title: "LWXGL: Lightweight X11 Graphics Library for C"
+sidebarTitle: "Introduction"
+description: "LWXGL is a minimal C shared library that wraps Xlib to provide windows, widgets, drawing primitives, and event handling in a single header."
+---
+
+LWXGL (Lightweight X11 Graphics Library) is a small, dependency-light C shared library that wraps Xlib to let you build graphical desktop applications without pulling in a heavy GUI toolkit. If you want to open a window, draw some widgets, respond to keyboard and mouse events, or paint pixels directly onto an image canvas — all from plain C or C++ — LWXGL gives you exactly that and nothing more. It is designed for developers who want direct, low-overhead access to X11 primitives through a clean, flat C API exposed by a single header file (`libLWXGL.h`).
+
+## Key Capabilities
+
+<CardGroup cols={2}>
+  <Card title="UI Widgets" icon="window">
+    Built-in text labels, buttons, and text inputs with hover and pressed colour states, rendered every frame by the library's double-buffered render loop.
+  </Card>
+  <Card title="Image Canvas" icon="image">
+    Allocate a pixel buffer, write palette-indexed colour bytes into it, then flush it to the screen with `GUpdateImage`. Ideal for sprite-based or generative graphics.
+  </Card>
+  <Card title="Drawing Primitives" icon="pen-to-square">
+    Draw filled or outlined rectangles, circles, straight lines, and RLE-encoded sprites onto any Image element using the `GPrimitive*` family of functions.
+  </Card>
+  <Card title="Event Callbacks" icon="bolt">
+    Attach callbacks for raw key presses (`GEventAttachKey`), mouse clicks (`GEventAttachClick`), and window-close requests (`GEventAttachDelete`). Button elements carry their own `onclick` handler.
+  </Card>
+  <Card title="16-Color Palette" icon="palette">
+    All colours are addressed by a palette index (0–15) modelled after classic CGA/terminal palettes. Palette values are resolved to true X11 pixel values at window creation time.
+  </Card>
+  <Card title="Simple Game Loop" icon="rotate">
+    `GSimpleWindowLoop` runs a fixed-timestep loop at a caller-specified target FPS, processing events and rendering each frame, with an optional per-frame tick callback.
+  </Card>
+</CardGroup>
+
+## Architecture
+
+LWXGL compiles to a single shared library, `libLWXGL.so`, built from a handful of C++ translation units. All public symbols are exported with `__attribute__((visibility("default")))` while internal helpers remain hidden, keeping the ABI surface small.
+
+The public interface is declared entirely in **`libLWXGL.h`**, which wraps every prototype in an `extern "C"` block so the library can be consumed from both C and C++ programs without any name-mangling issues.
+
+**Element ID system.** Every widget or canvas you create is assigned an integer ID that you choose. IDs index an internal `std::vector<Element*>`. Calling any `GCreate*` function with an ID that is already occupied automatically frees and replaces the existing element. You can remove a single element with `GDeleteElement(id)` or tear down the entire window with `GTerminateWindow()`.
+
+**Render loop.** `GSimpleWindowLoop` drives a double-buffered render cycle: each frame it calls `GHandleWindowEvents` to drain the Xlib event queue, then `GRenderWindow` to clear the back-buffer, iterate over all elements, composite any active modal dialog, optionally overlay debug metrics, and finally blit the back-buffer to the visible window with `XCopyArea`. You can also call `GHandleWindowEvents` and `GRenderWindow` manually if you need finer control.
+
+<Note>
+  LWXGL requires a live X11 display connection. `GCreateWindow` calls `XOpenDisplay(NULL)`, which reads the `DISPLAY` environment variable. In headless CI or server environments you will need a virtual framebuffer such as **Xvfb** (`Xvfb :99 -screen 0 1024x768x24 &` then `export DISPLAY=:99`) for the library to function.
+</Note>
+
+## Element Types
+
+LWXGL recognises five element types, identified by an integer stored on each `Element` struct:
+
+| Type ID | Name   | Create function   | Description |
+|---------|--------|-------------------|-------------|
+| `0`     | Text   | `GCreateText`     | A static string drawn at a fixed position in a palette colour. Supports `\n` for multi-line text. |
+| `1`     | Button | `GCreateButton`   | A labelled rectangle with distinct normal, hover, and pressed colour states and an `onclick` callback. |
+| `2`     | Input  | `GCreateInput`    | An editable text field that captures keyboard input when the mouse cursor is inside its bounds. |
+| `3`     | Rect   | `GCreateRect`     | A filled and/or outlined rectangle drawn with independent foreground (border) and background (fill) palette colours. |
+| `4`     | Image  | `GCreateImage`    | A raw pixel buffer whose bytes index the 16-colour palette. Drawing primitives (`GPrimitive*`) and sprites operate on Image elements. |
+
+## 16-Color Palette
+
+Every colour argument throughout the API is an index into the following fixed palette. RGB values are the exact values compiled into `main.cc`:
+
+| Index | Name           | R   | G   | B   |
+|-------|----------------|-----|-----|-----|
+| `0`   | Black          | 0   | 0   | 0   |
+| `1`   | Dark Blue      | 3   | 3   | 173 |
+| `2`   | Dark Green     | 0   | 170 | 0   |
+| `3`   | Dark Cyan      | 0   | 168 | 168 |
+| `4`   | Dark Red       | 186 | 6   | 6   |
+| `5`   | Dark Magenta   | 168 | 0   | 168 |
+| `6`   | Orange         | 230 | 126 | 34  |
+| `7`   | Light Gray     | 168 | 168 | 168 |
+| `8`   | Dark Gray      | 85  | 87  | 83  |
+| `9`   | Light Blue     | 87  | 87  | 255 |
+| `10`  | Light Green    | 85  | 255 | 85  |
+| `11`  | Light Cyan     | 96  | 240 | 240 |
+| `12`  | Light Red      | 255 | 85  | 85  |
+| `13`  | Light Magenta  | 240 | 84  | 240 |
+| `14`  | Yellow         | 244 | 242 | 54  |
+| `15`  | White          | 255 | 255 | 255 |
+
+Palette indices are also used in the packed **colour byte** format accepted by `GCreateButton` and `GCreateInput`. In that format the high nibble encodes the foreground colour index and the low nibble encodes the background colour index — so `0x7F` means foreground index 7 (Light Gray) on background index 15 (White).

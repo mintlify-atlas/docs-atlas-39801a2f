@@ -1,0 +1,164 @@
+---
+title: "Managing the LWXGL Window Lifecycle"
+sidebarTitle: "Window Lifecycle"
+description: "Learn how to create, drive, and tear down an LWXGL window using either GSimpleWindowLoop or a manual render loop."
+---
+
+Every LWXGL application follows the same three-phase lifecycle: **create** a window and allocate X11 resources, **loop** to process events and render frames, then **terminate** to release everything cleanly. Understanding each phase helps you structure your application correctly and avoid resource leaks.
+
+## Creating a Window
+
+`GCreateWindow` opens a connection to the X display, loads the font, allocates the 16-color palette, creates the window and a back-buffer pixmap, and sets fixed size hints so the user cannot resize the window.
+
+```c
+int GCreateWindow(int w, int h, const char *name, int bgcol);
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `w` | Window width in pixels |
+| `h` | Window height in pixels |
+| `name` | Title bar string |
+| `bgcol` | Background palette index (0–15) used to clear the window each frame |
+
+**Return codes:**
+
+| Code | Meaning |
+|------|---------|
+| `0` | Success |
+| `1` | Could not open X display (`$DISPLAY` not set, or no X server running) |
+| `2` | Required font `9x15` could not be loaded |
+| `3` | A window is already open |
+
+The window is fixed-size: LWXGL sets both the minimum and maximum WM size hints to `w × h`, preventing the user from resizing it.
+
+```c
+#include "libLWXGL.h"
+#include <stdio.h>
+
+int main(void) {
+    int result = GCreateWindow(800, 600, "My App", 0); /* black background */
+    if (result != 0) {
+        fprintf(stderr, "GCreateWindow failed: %d\n", result);
+        return 1;
+    }
+
+    /* ... loop and terminate ... */
+    return 0;
+}
+```
+
+## The Simple Loop
+
+`GSimpleWindowLoop` is the recommended way to drive your application. It manages frame timing, calls event handling and rendering automatically each frame, and invokes your callback once per tick.
+
+```c
+void GSimpleWindowLoop(int target_fps, void (*on_every)(int tick));
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `target_fps` | Desired frames per second (e.g. `60`) |
+| `on_every` | Called once per frame with the current tick counter (starts at 0, increments by 1 each frame). May be `NULL`. |
+
+Each frame the loop:
+
+<Steps>
+  <Step title="Check frame timing">
+    Waits until at least `1 000 000 / target_fps` microseconds have elapsed since the last frame. If the system falls more than two frame-periods behind, the clock is reset to prevent a backlog.
+  </Step>
+  <Step title="Process events">
+    Calls `GHandleWindowEvents()` to drain the X11 event queue.
+  </Step>
+  <Step title="Render">
+    Calls `GRenderWindow()` to draw all elements to the back-buffer and blit it to the screen.
+  </Step>
+  <Step title="Invoke your callback">
+    Calls `on_every(tick)` if it is not `NULL`.
+  </Step>
+</Steps>
+
+```c
+#include "libLWXGL.h"
+
+void on_frame(int tick) {
+    /* called once per frame — update game state, animate elements, etc. */
+    (void)tick;
+}
+
+int main(void) {
+    GCreateWindow(800, 600, "Simple Loop Demo", 0);
+
+    GSimpleWindowLoop(60, on_frame);
+
+    GTerminateWindow();
+    return 0;
+}
+```
+
+## Manual Loop
+
+If you need finer control over timing — for example, to integrate a physics engine with a fixed timestep — you can drive the loop yourself using `GWindowShouldClose`, `GHandleWindowEvents`, and `GRenderWindow`.
+
+```c
+int  GWindowShouldClose(void); /* returns 1 when the window has been closed */
+void GHandleWindowEvents(void);
+void GRenderWindow(void);
+```
+
+```c
+#include "libLWXGL.h"
+
+int main(void) {
+    GCreateWindow(800, 600, "Manual Loop Demo", 0);
+
+    while (!GWindowShouldClose()) {
+        GHandleWindowEvents();
+        /* your update logic here */
+        GRenderWindow();
+    }
+
+    GTerminateWindow();
+    return 0;
+}
+```
+
+<Note>
+  The debug overlay (F12) is only active when `GSimpleWindowLoop` is used, because it requires the frame-time measurements that the simple loop collects. In a manual loop, pressing F12 will toggle the overlay flag but no overlay will be drawn.
+</Note>
+
+## Window Close
+
+Two functions can trigger a close:
+
+<CardGroup cols={2}>
+  <Card title="GDeleteWindow()" icon="x">
+    Signals that the window should close by setting the internal `closing` flag to `1`. If a `GEventAttachDelete` callback has been registered, that callback's return value determines whether the close actually proceeds — return **non-zero** to allow it, **zero** to cancel it.
+  </Card>
+  <Card title="Ctrl + Escape" icon="keyboard">
+    Always closes the window unconditionally, bypassing any `GEventAttachDelete` callback.
+  </Card>
+</CardGroup>
+
+After the loop exits (i.e. `GWindowShouldClose()` returns `1`), call `GTerminateWindow()` to release all resources:
+
+```c
+void GTerminateWindow(void);
+```
+
+`GTerminateWindow` frees every registered element, releases the GC, back-buffer pixmap, stipple pixmap, font, and allocated X colors, then destroys the window and closes the display connection.
+
+<Warning>
+  You **must** call `GTerminateWindow()` after the loop exits. Skipping it leaks the X11 display connection, all allocated colors, and all heap-allocated element memory. Always pair `GCreateWindow` with `GTerminateWindow`.
+</Warning>
+
+## Debug Overlay
+
+Press **F12** at any time while `GSimpleWindowLoop` is running to toggle the debug overlay. The overlay renders a small black box in the top-left corner of the window showing:
+
+| Metric | Description |
+|--------|-------------|
+| **FT** | Average frame work time in microseconds, rolling average over the last 60 frames |
+| **FPS** | Instantaneous frames per second |
+
+The overlay is drawn on top of all other elements and does not interfere with event handling or rendering performance.

@@ -1,0 +1,220 @@
+---
+title: "Drawing Shapes and Sprites on an Image Canvas"
+sidebarTitle: "Drawing"
+description: "Use LWXGL's primitive drawing functions to render rectangles, circles, lines, and RLE sprites into an image canvas element."
+---
+
+All of LWXGL's drawing primitives operate on **Image canvas elements** created with `GCreateImage`. Rather than drawing directly to the window, you write into the canvas's pixel buffer and then call `GUpdateImage` to push your changes to the screen on the next render. This model keeps drawing logic decoupled from the X11 rendering pipeline.
+
+## Drawing Setup
+
+Before calling any primitive you must create an Image element:
+
+```c
+void GCreateImage(int id, int x, int y, int w, int h);
+```
+
+Key points to keep in mind across all primitives:
+
+- **Coordinates** are relative to the image's pixel buffer, not the window. `(0, 0)` is the top-left pixel of the image.
+- **Colors** are palette indices 0–15. Pass `-1` to skip drawing a particular component (foreground/border or background/fill).
+- All primitives **clip** to the image bounds — pixels outside the `w × h` area are silently ignored.
+- After modifying the pixel buffer, call `GUpdateImage(id)` before the next `GRenderWindow` to make changes visible.
+
+```c
+/* Minimal drawing setup */
+GCreateImage(0, 10, 10, 320, 240);
+
+/* draw into the image ... */
+
+GUpdateImage(0);
+```
+
+## Rectangle Primitive
+
+```c
+void GPrimitiveRect(int id, int x, int y, int w, int h, int fg, int bg);
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `id` | Image canvas element ID |
+| `x`, `y` | Top-left corner of the rectangle (image-relative) |
+| `w`, `h` | Width and height in pixels |
+| `fg` | Border color palette index, or `-1` to draw no border |
+| `bg` | Fill color palette index, or `-1` to draw no fill |
+
+When `fg == -1`, the border pixels are treated as part of the fill. Pixels outside the image bounds are clipped.
+
+```c
+/* Filled red rectangle with a white border */
+GPrimitiveRect(0, 10, 10, 80, 50, 15, 4);
+
+/* Unfilled border-only box */
+GPrimitiveRect(0, 100, 10, 80, 50, 7, -1);
+```
+
+## Circle Primitive
+
+```c
+void GPrimitiveCircle(int id, int cx, int cy, int r, int fg, int bg);
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `id` | Image canvas element ID |
+| `cx`, `cy` | Center of the circle (image-relative) |
+| `r` | Radius in pixels |
+| `fg` | Border ring color (1 pixel wide), or `-1` to skip |
+| `bg` | Interior fill color, or `-1` to skip |
+
+The border ring is defined as pixels where `(r-1)² ≤ dx² + dy² ≤ r²`. When both `fg` and `bg` are specified, border pixels take priority over fill pixels.
+
+```c
+/* Solid yellow circle, no border */
+GPrimitiveCircle(0, 160, 120, 40, -1, 14);
+
+/* Ring only — light cyan border, no fill */
+GPrimitiveCircle(0, 160, 120, 40, 11, -1);
+
+/* Filled circle with a dark-red border */
+GPrimitiveCircle(0, 50, 50, 30, 4, 10);
+```
+
+## Line Primitive
+
+```c
+void GPrimitiveLine(int id, int x1, int y1, int x2, int y2, int color);
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `id` | Image canvas element ID |
+| `x1`, `y1` | Start point (image-relative) |
+| `x2`, `y2` | End point (image-relative) |
+| `color` | Palette index for the line color |
+
+The line is rasterized using floating-point increments: the algorithm steps `max(|dx|, |dy|)` times, advancing by `dx/steps` and `dy/steps` each iteration and rounding to the nearest pixel. Pixels outside the image bounds are clipped.
+
+```c
+/* Diagonal white line */
+GPrimitiveLine(0, 0, 0, 319, 239, 15);
+
+/* Horizontal separator in dark gray */
+GPrimitiveLine(0, 0, 120, 319, 120, 8);
+```
+
+## Sprite Primitive (RLE Encoding)
+
+```c
+void GPrimitiveSprite(int id, int sx, int sy, int color,
+                      const char *sprite, int scale);
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `id` | Image canvas element ID |
+| `sx`, `sy` | Top-left position of the sprite (image-relative) |
+| `color` | Palette index used for `#` (filled) pixels |
+| `sprite` | RLE-encoded sprite string (see format below) |
+| `scale` | Pixel scale factor — `1` = 1:1, `2` = 2×2 blocks per pixel, etc. |
+
+### Sprite Format
+
+Sprites are encoded as compact RLE strings using the following tokens:
+
+| Token | Meaning |
+|-------|---------|
+| `#` | Filled pixel — drawn in `color` |
+| `.` | Transparent pixel — drawn in color index `0` (Black) |
+| `$` | Newline — move to the next row, reset X to `sx` |
+| `>N` | Skip `N` columns (transparent, does not write pixels) |
+| `N<token>` | Repeat the next token `N` times (e.g. `3#` = three filled pixels) |
+| `N[...]` | Repeat the group `[...]` `N` times |
+| `!` | End of sprite (optional; the parser also stops at the null terminator) |
+
+**Example — a 5×5 plus/cross shape:**
+
+```
+.2#.$2#.#.#$2#.#.#$2#.#.#$.2#.
+```
+
+Broken down row by row:
+
+```
+Row 0: . 2# .     →  .##.
+Row 1: 2# . # . # →  ##.#.# (5px cross arm)
+...
+```
+
+A cleaner small cross at 2× scale:
+
+```c
+const char *cross =
+    ".>#$"   /* row 0: skip 1, filled, skip 1 */
+    "3#$"    /* row 1: three filled */
+    ".>#!";  /* row 2: skip 1, filled, skip 1 */
+
+GPrimitiveSprite(0, 20, 20, 12, cross, 2); /* Light Red, 2× scale */
+```
+
+A larger working example with a 5×5 filled diamond:
+
+```c
+/* 5×5 diamond */
+const char *diamond =
+    ">2#$"      /* row 0:  ..#.. */
+    ">#3.#$"    /* row 1:  .#...# — oops; use simpler encoding: */
+    ">1#3.#$"
+    ">2#$"
+    "!";
+
+/* Simpler, explicit version */
+const char *diamond2 =
+    "2.#2.$"   /* ..#.. */
+    ".3#.$"    /* .###. */
+    "5#$"      /* ##### */
+    ".3#.$"    /* .###. */
+    "2.#2.!";  /* ..#.. */
+
+GPrimitiveSprite(0, 50, 50, 14, diamond2, 3); /* Yellow, 3× scale */
+```
+
+## Full Drawing Example
+
+The following snippet creates a 200×200 image canvas, draws a filled circle with a contrasting border, adds a diagonal line across it, and pushes everything to the screen:
+
+```c
+#include "libLWXGL.h"
+
+void on_frame(int tick) {
+    (void)tick;
+}
+
+int main(void) {
+    GCreateWindow(400, 300, "Drawing Demo", 8); /* Dark Gray background */
+
+    /* Create a 200×200 image canvas at (100, 50) */
+    GCreateImage(0, 100, 50, 200, 200);
+
+    /* Filled light-green circle with a dark-green border */
+    GPrimitiveCircle(0, 100, 100, 70, 2, 10);
+
+    /* White diagonal line across the whole canvas */
+    GPrimitiveLine(0, 0, 0, 199, 199, 15);
+
+    /* White-bordered rectangle in the corner */
+    GPrimitiveRect(0, 5, 5, 40, 40, 15, 1);
+
+    /* Push pixel changes to the XImage */
+    GUpdateImage(0);
+
+    GSimpleWindowLoop(60, on_frame);
+    GTerminateWindow();
+    return 0;
+}
+```
+
+<Note>
+  Drawing primitives write directly into the image's `data` byte array. They do **not** call `GUpdateImage` themselves — you must call it after finishing all draw calls for a frame. If you're animating, call the primitives and `GUpdateImage` inside your `on_every` callback each frame.
+</Note>

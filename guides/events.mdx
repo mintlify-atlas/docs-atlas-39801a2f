@@ -1,0 +1,161 @@
+---
+title: "Handling Keyboard and Mouse Events in LWXGL"
+sidebarTitle: "Events"
+description: "Attach callbacks for keypress, mouse click, and window close events, and poll real-time mouse and keyboard state in LWXGL."
+---
+
+LWXGL processes X11 events inside `GHandleWindowEvents`, which is called automatically by `GSimpleWindowLoop` each frame (or manually in a custom loop). You can respond to input in two complementary ways: **attach callbacks** that fire when a specific event occurs, or **poll state** directly to check what is currently pressed or where the mouse is.
+
+## Keyboard Callbacks
+
+```c
+void GEventAttachKey(void (*Key)(int key));
+```
+
+The attached callback fires once for each keypress, as long as:
+
+- No input widget (`GCreateInput`) has the cursor inside its bounds, and
+- No modal dialog is currently open.
+
+The `key` parameter is the **ASCII value** for printable keys, or one of the following special constants for non-printable keys:
+
+| Constant | Value | Key |
+|----------|-------|-----|
+| `GKeyLeft` | `170` | Left arrow |
+| `GKeyRight` | `171` | Right arrow |
+| `GKeyUp` | `172` | Up arrow |
+| `GKeyDown` | `173` | Down arrow |
+| `GKeyFnBase + 1` | `151` | F1 |
+| `GKeyFnBase + 2` | `152` | F2 |
+| … | … | … |
+| `GKeyFnBase + 12` | `162` | F12 |
+
+`GKeyFnBase` is `150`; function keys are `GKeyFnBase + N` for F`N`.
+
+Two key combinations are always handled by LWXGL before your callback is reached:
+- **Ctrl+Escape** — unconditionally closes the window.
+- **F12** — toggles the debug overlay (when `GSimpleWindowLoop` is active).
+
+```c
+void handle_key(int key) {
+    if (key == GKeyLeft)  { /* move player left */ }
+    if (key == GKeyRight) { /* move player right */ }
+    if (key == GKeyUp)    { /* jump */ }
+    if (key == 'q')       { GDeleteWindow(); }
+}
+
+/* Attach before entering the loop */
+GEventAttachKey(handle_key);
+```
+
+## Keyboard Polling
+
+For smooth, frame-by-frame input (such as continuous movement while a key is held), poll the keyboard state directly instead of using the event callback.
+
+```c
+unsigned char *GQueryKeyboard(void);
+int            GQueryKeyDown(int ch);
+```
+
+- `GQueryKeyboard()` returns a pointer to an 8-byte array of currently held key codes (up to 8 simultaneous keys). A value of `0` in a slot means no key is held there.
+- `GQueryKeyDown(ch)` returns `1` if the given character or key constant is currently pressed, `0` otherwise.
+
+```c
+void on_frame(int tick) {
+    if (GQueryKeyDown(GKeyLeft))  { /* move left */ }
+    if (GQueryKeyDown(GKeyRight)) { /* move right */ }
+    if (GQueryKeyDown(GKeyUp))    { /* move up */ }
+    if (GQueryKeyDown(GKeyDown))  { /* move down */ }
+}
+```
+
+## Mouse Callbacks
+
+```c
+void GEventAttachClick(void (*Click)(int x, int y, int btn));
+```
+
+The attached callback fires on **mouse button release**, provided:
+
+- No button widget (`GCreateButton`) was the click target, and
+- No modal dialog is currently open.
+
+| `btn` value | Button |
+|-------------|--------|
+| `1` | Left |
+| `2` | Middle |
+| `3` | Right |
+
+`x` and `y` are the cursor position at the time of release.
+
+```c
+void handle_click(int x, int y, int btn) {
+    if (btn == 1) {
+        /* left click at (x, y) */
+    }
+}
+
+GEventAttachClick(handle_click);
+```
+
+## Mouse Polling
+
+```c
+void GQueryMouse(int *x, int *y, int *btn);
+```
+
+Fills all three output pointers with the current mouse state:
+
+| Output | Description |
+|--------|-------------|
+| `*x`, `*y` | Current cursor position in window coordinates. Both are `-1` when the cursor is outside the window. |
+| `*btn` | Currently held button: `0` = none, `1` = left, `2` = middle, `3` = right |
+
+```c
+void on_frame(int tick) {
+    int mx, my, mb;
+    GQueryMouse(&mx, &my, &mb);
+    if (mx != -1 && mb == 1) {
+        /* left button held at (mx, my) */
+    }
+}
+```
+
+## Window Close Callback
+
+```c
+void GEventAttachDelete(int (*on_exit)(void));
+```
+
+Register a callback that is invoked when the window is asked to close (either by `GDeleteWindow()` or by the WM close button). The return value controls what happens:
+
+| Return value | Effect |
+|--------------|--------|
+| Non-zero | Close proceeds (`closing` flag is set to `1`) |
+| `0` | Close is cancelled |
+
+If no callback is registered, closing is always allowed.
+
+The following pattern shows how to use a modal confirmation dialog to intercept the close event:
+
+```c
+void confirm_quit(void) {
+    GDeleteWindow(); /* user clicked OK — now actually close */
+}
+
+int on_close(void) {
+    GSpawnModal(1, "Quit the application?", confirm_quit);
+    return 0; /* block close until modal resolves */
+}
+
+/* ... */
+GEventAttachDelete(on_close);
+```
+
+<Note>
+  **Event priority rules:**
+
+  - A **button `onclick`** fires before the global `GEventAttachClick` callback. If a button was clicked, the global Click callback is not called for that release event.
+  - **Input widgets** consume keypresses before the `GEventAttachKey` callback, as long as the cursor is inside the input's bounds. If no input widget has the cursor, the key callback fires normally.
+  - While a **modal** is open, button `onclick` callbacks and the key callback are suppressed entirely. Mouse clicks are only processed by the modal's own OK/Cancel buttons.
+</Note>

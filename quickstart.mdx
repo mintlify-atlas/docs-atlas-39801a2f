@@ -1,47 +1,155 @@
 ---
-title: "Quickstart"
-description: "Begin with a guide on the fastest path to a successful outcome"
+title: "Get Started with LWXGL in C"
+sidebarTitle: "Quickstart"
+description: "Open an X11 window, add a text label and button, and run the event loop in under 30 lines of C using LWXGL."
 ---
 
-Describe how someone begins using your product. What is the first thing they need to do? Are there any prerequisites?
+This quickstart walks you through writing a complete LWXGL program from scratch. By the end you will have an X11 window containing a white text label and a styled button, running at 60 frames per second with a click handler — all in under 30 lines of C. The example also demonstrates the fixed-timestep game loop and the per-frame tick callback, giving you the foundation you need to build interactive applications or simple games on top of LWXGL.
 
-A quickstart should take someone from zero to using your product. They'll get a quick win and a sense of what they can accomplish.
-
-## Prerequisites
-
-Before you begin, you must have:
-
-- Requirement one (for example, Node.js 18+, a free account, an API key)
-- Requirement two (for example, a compatible device, a compatible browser, a compatible operating system)
-
-## Get started
+## Building a Hello-World Window
 
 <Steps>
-  <Step title="Install">
-    Describe how to install your product or sign up.
+  <Step title="Include the header">
+    LWXGL exposes its entire public API through a single header. After `make install` the header lives at `/usr/local/include/libLWXGL.h`, which is on the default include path.
 
-    ```bash
-    npm install your-package
+    ```c
+    #include <libLWXGL.h>
+    #include <stdio.h>
     ```
   </Step>
-  <Step title="Configure">
-    Describe any setup or configuration needed before first use.
 
-    ```bash
-    your-cli init
+  <Step title="Create the window">
+    Call `GCreateWindow` before any other LWXGL function. It opens the X11 display, allocates the 16-colour palette, creates the backing pixmap, and maps the window to the screen.
+
+    ```c
+    if (GCreateWindow(400, 300, "Hello LWXGL", 0) != 0) {
+        fprintf(stderr, "Failed to create window\n");
+        return 1;
+    }
     ```
+
+    The fourth argument, `bgcol`, is the palette index used to clear the window background each frame. `0` is Black.
+
+    **Return codes:**
+
+    | Value | Meaning |
+    |-------|---------|
+    | `0`   | Success — window is open and ready |
+    | `1`   | No X display — `XOpenDisplay(NULL)` returned `NULL`; check your `DISPLAY` environment variable |
+    | `2`   | Font not found — the `9x15` bitmap font used for all text rendering was unavailable |
+    | `3`   | Window already open — `GCreateWindow` was called a second time without calling `GTerminateWindow` first |
   </Step>
-  <Step title="Run it">
-    Show the first thing a user does to see it working.
 
-    ```bash
-    your-cli start
+  <Step title="Add a text label">
+    `GCreateText` registers a static text element. The element is drawn every frame by the render loop — you do not need to call anything else to keep it visible.
+
+    ```c
+    /* Text label: id=0, x=20, y=20, color=15 (White) */
+    GCreateText(0, 20, 20, 15, "Hello, LWXGL!");
     ```
+
+    Arguments: `id`, `x`, `y`, `color` (palette index), `text`. The text is drawn using the built-in `9x15` bitmap font. Embed `\n` to create multi-line labels.
+  </Step>
+
+  <Step title="Add a button">
+    `GCreateButton` creates a labelled, interactive button. The three packed colour bytes — `u` (normal), `hvr` (hover), and `p` (pressed) — each encode a foreground palette index in their high nibble and a background palette index in their low nibble.
+
+    ```c
+    /* Button: id=1, x=150, y=130, w=100, h=30
+       u=0x7F  -> fg=7 (Light Gray), bg=15 (White) — normal state
+       hvr=0x9F -> fg=9 (Light Blue), bg=15 (White) — hover state
+       p=0xAF  -> fg=10 (Light Green), bg=15 (White) — pressed state */
+    GCreateButton(1, 150, 130, 100, 30, 0x7F, 0x9F, 0xAF, "Click Me", on_click);
+    ```
+
+    The `on_click` argument is a `void (*)(void)` function pointer called when the user releases the left mouse button while the cursor is inside the button bounds.
+
+    <Note>
+      The packed colour byte format is used by `GCreateButton` and `GCreateInput` alike. In a byte `0xFB`: the high nibble `0xF` (decimal 15) is the foreground palette index (White) and the low nibble `0xB` (decimal 11) is the background palette index (Light Cyan). Passing `0x00` sets both foreground and background to Black (index 0).
+    </Note>
+  </Step>
+
+  <Step title="Run the event loop">
+    `GSimpleWindowLoop` blocks until the window is closed, calling `GHandleWindowEvents` and `GRenderWindow` every frame and sleeping between frames to honour the target FPS.
+
+    ```c
+    GSimpleWindowLoop(60, NULL);
+    ```
+
+    The second argument is an optional per-frame tick callback (`void (*on_every)(int tick)`). Passing `NULL` disables it. The `tick` counter starts at `0` and increments by one each rendered frame.
+  </Step>
+
+  <Step title="Clean up">
+    After `GSimpleWindowLoop` returns (because `GWindowShouldClose()` became non-zero), release all X11 resources:
+
+    ```c
+    GTerminateWindow();
+    ```
+
+    This frees every registered element, the graphics context, the backing pixmap, the font, the 16 allocated palette colours, and closes the display connection.
   </Step>
 </Steps>
 
-<Tip>
-  Give people a way to get help. This could be a link to a support page, a chat with a customer support agent, or a forum for your product.
+## Complete Example
 
-  Example: Need help? Reach out to us at [support@yourcompany.com](mailto:support@yourcompany.com).
+```c
+#include <libLWXGL.h>
+#include <stdio.h>
+
+void on_click(void) {
+    printf("Button clicked!\n");
+}
+
+int main(void) {
+    if (GCreateWindow(400, 300, "Hello LWXGL", 0) != 0) {
+        fprintf(stderr, "Failed to create window\n");
+        return 1;
+    }
+
+    /* Text label: id=0, x=20, y=20, color=15 (white) */
+    GCreateText(0, 20, 20, 15, "Hello, LWXGL!");
+
+    /* Button: id=1, x=150, y=130, w=100, h=30
+       u=0x7F  -> fg=7 (Light Gray), bg=15 (White) normal state
+       hvr=0x9F -> fg=9 (Light Blue), bg=15 (White) hover state
+       p=0xAF  -> fg=10 (Light Green), bg=15 (White) pressed state */
+    GCreateButton(1, 150, 130, 100, 30, 0x7F, 0x9F, 0xAF, "Click Me", on_click);
+
+    GSimpleWindowLoop(60, NULL);
+    GTerminateWindow();
+    return 0;
+}
+```
+
+## Compile and Run
+
+Save the file as `hello.c`, then build and execute:
+
+```bash
+gcc -o hello hello.c -lLWXGL
+./hello
+```
+
+A 400×300 black window titled "Hello LWXGL" will appear with a white label near the top-left and a button centred in the window. Clicking the button prints `Button clicked!` to standard output. Close the window (or press **Ctrl+Esc**) to exit.
+
+## Using the Per-Frame Tick Callback
+
+When you need to run logic every frame — animating sprites, polling input, updating a game state — pass a `void (*)(int)` callback as the second argument to `GSimpleWindowLoop`. The `tick` parameter starts at `0` and increments by one for each rendered frame, making it easy to schedule events at regular intervals.
+
+```c
+void on_frame(int tick) {
+    /* Called every frame. tick increments each frame. */
+    if (tick % 60 == 0) {
+        /* Executes once per second when running at 60 FPS */
+    }
+}
+
+/* ... window and element setup ... */
+GSimpleWindowLoop(60, on_frame);
+```
+
+The callback is invoked after `GHandleWindowEvents` and `GRenderWindow` have completed for that frame, so any element mutations you make inside `on_frame` take effect on the next rendered frame.
+
+<Tip>
+  `GSimpleWindowLoop` is the recommended entry point for most applications. If you need to integrate LWXGL into an existing event loop or drive the render cycle at a variable rate, you can call `GHandleWindowEvents()` and `GRenderWindow()` manually and use `GWindowShouldClose()` as your loop condition. See [/guides/window-lifecycle](/guides/window-lifecycle) for a full walkthrough of the manual loop approach.
 </Tip>
