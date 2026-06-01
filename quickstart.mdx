@@ -1,7 +1,7 @@
 ---
-title: "Get Started with LWXGL in C"
+title: "LWXGL Quickstart: Open an X11 Window and Add Widgets"
 sidebarTitle: "Quickstart"
-description: "Open an X11 window, add a text label and button, and run the event loop in under 30 lines of C using LWXGL."
+description: "Open an X11 window, add a text label and a button, handle events, and run the fixed-timestep loop in under 30 lines of C using LWXGL."
 ---
 
 This quickstart walks you through writing a complete LWXGL program from scratch. By the end you will have an X11 window containing a white text label and a styled button, running at 60 frames per second with a click handler — all in under 30 lines of C. The example also demonstrates the fixed-timestep game loop and the per-frame tick callback, giving you the foundation you need to build interactive applications or simple games on top of LWXGL.
@@ -76,7 +76,7 @@ This quickstart walks you through writing a complete LWXGL program from scratch.
     GSimpleWindowLoop(60, NULL);
     ```
 
-    The second argument is an optional per-frame tick callback (`void (*on_every)(int tick)`). Passing `NULL` disables it. The `tick` counter starts at `0` and increments by one each rendered frame.
+    The second argument is an optional per-frame tick callback with signature `void (*on_every)(int tick)`. Passing `NULL` disables it. The `tick` counter starts at `0` and increments by one each rendered frame.
   </Step>
 
   <Step title="Clean up">
@@ -150,6 +150,46 @@ GSimpleWindowLoop(60, on_frame);
 
 The callback is invoked after `GHandleWindowEvents` and `GRenderWindow` have completed for that frame, so any element mutations you make inside `on_frame` take effect on the next rendered frame.
 
+## Handling Key Events
+
+To respond to keyboard input, register a callback with `GEventAttachKey`. The callback receives the X11 keysym for printable characters or one of the `GKey*` constants for special keys.
+
+```c
+void on_key(int key) {
+    if (key == GKeyLeft)  { /* move left  */ }
+    if (key == GKeyRight) { /* move right */ }
+    if (key == GKeyUp)    { /* move up    */ }
+    if (key == GKeyDown)  { /* move down  */ }
+    /* Function keys: GKeyFnBase + 1 = F1, GKeyFnBase + 2 = F2, etc. */
+}
+
+GEventAttachKey(on_key);
+```
+
+**Key constants defined in `libLWXGL.h`:**
+
+| Constant     | Value | Key         |
+|--------------|-------|-------------|
+| `GKeyLeft`   | `170` | Left arrow  |
+| `GKeyRight`  | `171` | Right arrow |
+| `GKeyUp`     | `172` | Up arrow    |
+| `GKeyDown`   | `173` | Down arrow  |
+| `GKeyFnBase` | `150` | Function key base (add key number for F1–Fn) |
+
+You can also poll the held-down state of any key at any time with `GQueryKeyDown(int ch)`, which returns non-zero if that key is currently pressed.
+
+## Manual Event Loop
+
+`GSimpleWindowLoop` is the recommended entry point for most applications. If you need to integrate LWXGL into an existing event loop or drive the render cycle at a variable rate, you can call `GHandleWindowEvents()` and `GRenderWindow()` manually and use `GWindowShouldClose()` as your loop condition:
+
+```c
+while (!GWindowShouldClose()) {
+    GHandleWindowEvents();
+    GRenderWindow();
+}
+GTerminateWindow();
+```
+
 <Tip>
-  `GSimpleWindowLoop` is the recommended entry point for most applications. If you need to integrate LWXGL into an existing event loop or drive the render cycle at a variable rate, you can call `GHandleWindowEvents()` and `GRenderWindow()` manually and use `GWindowShouldClose()` as your loop condition. See [/guides/window-lifecycle](/guides/window-lifecycle) for a full walkthrough of the manual loop approach.
+  Use `GDeleteElement(id)` to remove a single widget without tearing down the whole window, or replace an element by calling its `GCreate*` function again with the same `id` — the existing element is automatically freed and replaced.
 </Tip>

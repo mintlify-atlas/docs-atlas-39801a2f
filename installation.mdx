@@ -1,7 +1,7 @@
 ---
-title: "Install LWXGL on Linux"
+title: "How to Build and Install LWXGL on Linux from Source"
 sidebarTitle: "Installation"
-description: "Build libLWXGL.so from source with g++ and Xlib, then install the shared library and header system-wide using make install."
+description: "Build libLWXGL.so from source with g++ and Xlib, then install the shared library and header system-wide so any C or C++ program can link against LWXGL."
 ---
 
 Building LWXGL from source produces two artefacts that are copied to standard system locations: the shared library **`/usr/local/lib/libLWXGL.so`** and the public header **`/usr/local/include/libLWXGL.h`**. Once installed, any C or C++ program on the same machine can include the header and link against the library with `-lLWXGL`.
@@ -86,13 +86,13 @@ After installation, link your program against LWXGL with `-lLWXGL`. No `-I` or `
 
 With `gcc` (for C programs):
 
-```c
+```bash
 gcc -o myapp myapp.c -lLWXGL
 ```
 
 With `g++` (for C++ programs):
 
-```cpp
+```bash
 g++ -o myapp myapp.cpp -lLWXGL
 ```
 

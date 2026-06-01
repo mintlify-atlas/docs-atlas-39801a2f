@@ -1,7 +1,7 @@
 ---
 title: "Widget API Reference — Text, Button, Input, Rect, Image"
 sidebarTitle: "Widgets API"
-description: "Complete reference for LWXGL element creation: GCreateText, GCreateButton, GCreateInput, GCreateRect, GCreateImage, GGetImageData, GUpdateImage, and GDeleteElement."
+description: "Reference for LWXGL element creation and management: text labels, buttons, input fields, rectangles, image canvases, and GDeleteElement."
 ---
 
 LWXGL organizes every visible object in a window as an **element** stored in a flat integer-indexed slot array. You create elements by calling the appropriate `GCreate*` function with a unique integer ID. Elements are rendered in slot order each time `GRenderWindow` is called, and they can be destroyed individually with `GDeleteElement`. This page covers every widget type in the library: text labels, buttons, input fields, rectangles, and image canvases.

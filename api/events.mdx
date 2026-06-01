@@ -1,7 +1,7 @@
 ---
-title: "Events and Input API Reference"
+title: "LWXGL Events and Input API — Callbacks and Polling"
 sidebarTitle: "Events API"
-description: "Reference for LWXGL event callbacks and input polling: GEventAttachKey, GEventAttachClick, GEventAttachDelete, GQueryMouse, GQueryKeyboard, GQueryKeyDown, and key constants."
+description: "LWXGL event callbacks and input polling reference: GEventAttachKey, GEventAttachClick, GEventAttachDelete, GQueryMouse, GQueryKeyboard, and GQueryKeyDown."
 ---
 
 LWXGL processes X11 events through `GHandleWindowEvents`, called each frame. You can attach callbacks that fire on specific input events, or poll real-time keyboard and mouse state at any point in your frame logic. The two approaches are complementary: callbacks are ideal for discrete events (a key was pressed, a click landed), while the polling functions let you sample continuous state — which keys are held, where the cursor is — at any point during your frame update.

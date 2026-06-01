@@ -1,7 +1,7 @@
 ---
-title: "Window Management API Reference"
+title: "LWXGL Window Management API — Lifecycle and Rendering"
 sidebarTitle: "Window API"
-description: "Complete reference for LWXGL window creation, rendering, the event loop, modal dialogs, and resource cleanup functions."
+description: "Full reference for LWXGL window creation, frame rendering, the event loop, modal dialogs, and resource cleanup. Covers return codes and cleanup order."
 ---
 
 LWXGL exposes a small set of C functions for creating and managing a single X11 window, driving a frame loop, rendering registered elements to a double-buffered back buffer, and displaying modal dialogs. All window state is held internally by the library; your application interacts with it exclusively through the functions documented on this page.
@@ -43,6 +43,7 @@ Opens a fixed-size X11 window of `w × h` pixels, sets its title to `name`, and 
   | `1`   | Could not connect to the X display (`XOpenDisplay` returned `NULL`). |
   | `2`   | The bitmap font `9x15` was not found on the X server. |
   | `3`   | A window is already open (only one window is supported at a time). |
+  | `127 + i` | `XAllocColor` failed for palette color index `i` (0–15). Values in the range `127`–`142`. |
 </ParamField>
 
 <Warning>
@@ -57,7 +58,7 @@ Opens a fixed-size X11 window of `w × h` pixels, sets its title to `name`, and 
 void GTerminateWindow(void);
 ```
 
-Frees all registered elements, releases the graphics context, destroys the back-buffer pixmap and stipple bitmap, frees all 16 allocated palette colors, destroys the window, and closes the display connection. This function must be called after the main loop exits to avoid resource leaks.
+Frees all registered elements, releases the bitmap font, releases the graphics context, destroys the back-buffer pixmap and stipple bitmap, frees all 16 allocated palette colors, destroys the window, and closes the display connection. This function must be called after the main loop exits to avoid resource leaks.
 
 <Warning>
   Calling `GTerminateWindow` while the event loop is still running (i.e., before `GWindowShouldClose` returns `1`) produces undefined behavior. Always wait for the loop to exit before calling this function.
@@ -89,7 +90,7 @@ Returns the value of the internal `closing` flag. Use the return value as the ex
 void GHandleWindowEvents(void);
 ```
 
-Drains the X11 event queue by calling `XPending` / `XNextEvent` in a loop and dispatches each pending event to its registered handler. This covers pointer motion, button press/release, key press/release, expose events, and the `WM_DELETE_WINDOW` client message. Must be called once per frame when using a manual loop; `GSimpleWindowLoop` calls it automatically.
+Drains the X11 event queue by calling `XPending` / `XNextEvent` in a loop and dispatches each pending event to its registered handler. This covers pointer motion, button press/release, key press/release, cursor-leave (`LeaveNotify`), expose events, and the `WM_DELETE_WINDOW` client message. Must be called once per frame when using a manual loop; `GSimpleWindowLoop` calls it automatically.
 
 ---
 
@@ -112,7 +113,7 @@ Executes one complete render pass:
 ### GSimpleWindowLoop
 
 ```c
-void GSimpleWindowLoop(int target_fps, void (*on_every)(int tick));
+void GSimpleWindowLoop(int target_fps, void (*on_every)(int));
 ```
 
 Runs the complete render-and-event loop at the requested frame rate. Each frame, in order:
@@ -127,7 +128,7 @@ Between frames the loop sleeps with sub-millisecond precision to keep CPU usage 
   Desired frames per second. The loop derives the frame period as `1 000 000 / target_fps` microseconds.
 </ParamField>
 
-<ParamField path="on_every" type="void (*)(int tick)" required>
+<ParamField path="on_every" type="void (*)(int)" required>
   Per-frame callback invoked after rendering. Receives the zero-based tick counter that increments once per rendered frame. Pass `NULL` if no per-frame callback is needed.
 </ParamField>
 

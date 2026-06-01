@@ -1,7 +1,7 @@
 ---
-title: "Managing the LWXGL Window Lifecycle"
+title: "LWXGL Window Lifecycle: Creating, Looping, and Terminating"
 sidebarTitle: "Window Lifecycle"
-description: "Learn how to create, drive, and tear down an LWXGL window using either GSimpleWindowLoop or a manual render loop."
+description: "Learn how to create, drive, and cleanly tear down an LWXGL window using GSimpleWindowLoop or a manual render loop in your C application."
 ---
 
 Every LWXGL application follows the same three-phase lifecycle: **create** a window and allocate X11 resources, **loop** to process events and render frames, then **terminate** to release everything cleanly. Understanding each phase helps you structure your application correctly and avoid resource leaks.
@@ -136,7 +136,7 @@ Two functions can trigger a close:
     Signals that the window should close by setting the internal `closing` flag to `1`. If a `GEventAttachDelete` callback has been registered, that callback's return value determines whether the close actually proceeds — return **non-zero** to allow it, **zero** to cancel it.
   </Card>
   <Card title="Ctrl + Escape" icon="keyboard">
-    Always closes the window unconditionally, bypassing any `GEventAttachDelete` callback.
+    Invokes `GDeleteWindow()` directly, bypassing the key callback. The `GEventAttachDelete` callback is still checked — return `0` from it to cancel the close.
   </Card>
 </CardGroup>
 

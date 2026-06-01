@@ -1,7 +1,7 @@
 ---
-title: "Drawing Shapes and Sprites on an Image Canvas"
+title: "Drawing Shapes and Sprites into LWXGL Image Canvas Elements"
 sidebarTitle: "Drawing"
-description: "Use LWXGL's primitive drawing functions to render rectangles, circles, lines, and RLE sprites into an image canvas element."
+description: "Render rectangles, circles, lines, and RLE-encoded sprites into LWXGL image canvas elements using the four GPrimitive drawing functions."
 ---
 
 All of LWXGL's drawing primitives operate on **Image canvas elements** created with `GCreateImage`. Rather than drawing directly to the window, you write into the canvas's pixel buffer and then call `GUpdateImage` to push your changes to the screen on the next render. This model keeps drawing logic decoupled from the X11 rendering pipeline.
@@ -44,7 +44,7 @@ void GPrimitiveRect(int id, int x, int y, int w, int h, int fg, int bg);
 | `fg` | Border color palette index, or `-1` to draw no border |
 | `bg` | Fill color palette index, or `-1` to draw no fill |
 
-When `fg == -1`, the border pixels are treated as part of the fill. Pixels outside the image bounds are clipped.
+When `fg == -1`, the library sets `fg = bg` before drawing, so border pixels receive the same color as the fill. Pixels outside the image bounds are clipped.
 
 ```c
 /* Filled red rectangle with a white border */

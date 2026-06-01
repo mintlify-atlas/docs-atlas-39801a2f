@@ -1,7 +1,7 @@
 ---
-title: "Handling Keyboard and Mouse Events in LWXGL"
+title: "LWXGL Keyboard and Mouse Events: Callbacks and State Polling"
 sidebarTitle: "Events"
-description: "Attach callbacks for keypress, mouse click, and window close events, and poll real-time mouse and keyboard state in LWXGL."
+description: "Attach event callbacks and poll real-time keyboard and mouse state in LWXGL using GEventAttachKey, GEventAttachClick, and GQueryMouse."
 ---
 
 LWXGL processes X11 events inside `GHandleWindowEvents`, which is called automatically by `GSimpleWindowLoop` each frame (or manually in a custom loop). You can respond to input in two complementary ways: **attach callbacks** that fire when a specific event occurs, or **poll state** directly to check what is currently pressed or where the mouse is.
@@ -33,7 +33,7 @@ The `key` parameter is the **ASCII value** for printable keys, or one of the fol
 `GKeyFnBase` is `150`; function keys are `GKeyFnBase + N` for F`N`.
 
 Two key combinations are always handled by LWXGL before your callback is reached:
-- **Ctrl+Escape** — unconditionally closes the window.
+- **Ctrl+Escape** — calls `GDeleteWindow()` directly, bypassing your key callback. The `GEventAttachDelete` callback is still consulted; return `0` from it to cancel the close.
 - **F12** — toggles the debug overlay (when `GSimpleWindowLoop` is active).
 
 ```c

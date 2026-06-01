@@ -1,7 +1,7 @@
 ---
-title: "LWXGL: Lightweight X11 Graphics Library for C"
+title: "LWXGL: A Lightweight X11 GUI Graphics Library for C"
 sidebarTitle: "Introduction"
-description: "LWXGL is a minimal C shared library that wraps Xlib to provide windows, widgets, drawing primitives, and event handling in a single header."
+description: "LWXGL is a minimal C shared library wrapping Xlib for windows, widgets, drawing primitives, image canvases, and event handling — all through one header."
 ---
 
 LWXGL (Lightweight X11 Graphics Library) is a small, dependency-light C shared library that wraps Xlib to let you build graphical desktop applications without pulling in a heavy GUI toolkit. If you want to open a window, draw some widgets, respond to keyboard and mouse events, or paint pixels directly onto an image canvas — all from plain C or C++ — LWXGL gives you exactly that and nothing more. It is designed for developers who want direct, low-overhead access to X11 primitives through a clean, flat C API exposed by a single header file (`libLWXGL.h`).
@@ -79,3 +79,88 @@ Every colour argument throughout the API is an index into the following fixed pa
 | `15`  | White          | 255 | 255 | 255 |
 
 Palette indices are also used in the packed **colour byte** format accepted by `GCreateButton` and `GCreateInput`. In that format the high nibble encodes the foreground colour index and the low nibble encodes the background colour index — so `0x7F` means foreground index 7 (Light Gray) on background index 15 (White).
+
+## Complete Public API Reference
+
+The following tables list every function and constant exported by `libLWXGL.h`.
+
+### Window Management
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `GCreateWindow` | `int GCreateWindow(int w, int h, const char* name, int bgcol)` | Opens the X11 display, allocates the 16-colour palette, creates the backing pixmap, and maps the window. Returns `0` on success; see return code table below. |
+| `GTerminateWindow` | `void GTerminateWindow()` | Frees all registered elements, the graphics context, backing pixmap, font, allocated palette colours, and closes the display connection. |
+| `GDeleteWindow` | `void GDeleteWindow()` | Triggers the window-close path: if a delete callback is registered via `GEventAttachDelete` it is called and its return value sets the close flag; otherwise the flag is set to `1` immediately. |
+| `GWindowShouldClose` | `int GWindowShouldClose()` | Returns non-zero when the window has been asked to close. Use as the condition of a manual event loop. |
+| `GHandleWindowEvents` | `void GHandleWindowEvents()` | Drains the Xlib event queue for one frame: processes expose, button press/release, pointer motion, key press/release, and WM delete events. |
+| `GRenderWindow` | `void GRenderWindow()` | Clears the back-buffer, renders all registered elements, composites any active modal dialog, overlays debug metrics if enabled, then blits to the visible window. |
+| `GSimpleWindowLoop` | `void GSimpleWindowLoop(int target_fps, void (*on_every)(int))` | Blocks until `GWindowShouldClose()` is non-zero, calling `GHandleWindowEvents` and `GRenderWindow` each frame at `target_fps`. The optional `on_every` callback receives an incrementing `int` tick counter starting at `0`. |
+
+**`GCreateWindow` return codes:**
+
+| Value | Meaning |
+|-------|---------|
+| `0` | Success — window is open and ready |
+| `1` | No X display — `XOpenDisplay(NULL)` returned `NULL`; check your `DISPLAY` environment variable |
+| `2` | Font not found — the `9x15` bitmap font used for all text rendering was unavailable |
+| `3` | Window already open — `GCreateWindow` was called a second time without calling `GTerminateWindow` first |
+
+### Element Creation and Deletion
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `GCreateText` | `void GCreateText(int id, int x, int y, int color, const char* text)` | Creates a static text label at `(x, y)` drawn in palette colour `color`. Embed `\n` for multi-line output. |
+| `GCreateButton` | `void GCreateButton(int id, int x, int y, int w, int h, int u, int hvr, int p, const char* label, void (*onclick)(void))` | Creates a labelled button. `u`, `hvr`, and `p` are packed colour bytes (high nibble = fg, low nibble = bg) for the normal, hover, and pressed states respectively. `onclick` is called on left-button release inside the button bounds. |
+| `GCreateInput` | `void GCreateInput(int id, int x, int y, int w, int h, int u, int hvr, int max)` | Creates an editable text field. `u` and `hvr` are packed colour bytes. `max` is the maximum character count; pass `w = -1` to auto-size the field width to `(max + 1) * 9 + 10` pixels. |
+| `GGetInput` | `char* GGetInput(int id)` | Returns a pointer to the null-terminated string currently held by the Input element with the given `id`. |
+| `GCreateRect` | `void GCreateRect(int id, int x, int y, int w, int h, int fg, int bg)` | Creates a filled rectangle. `fg` is the border (foreground) palette index; `bg` is the fill (background) palette index. |
+| `GCreateImage` | `void GCreateImage(int id, int x, int y, int w, int h)` | Allocates an `w × h` pixel buffer whose bytes each index the 16-colour palette. Use `GGetImageData`, write palette indices into the buffer, then call `GUpdateImage` to flush changes to the screen. |
+| `GGetImageData` | `unsigned char* GGetImageData(int id)` | Returns a pointer to the raw `w × h` byte array for the Image element `id`. Each byte is a palette index (0–15). |
+| `GUpdateImage` | `void GUpdateImage(int id)` | Scans the pixel buffer for changed bytes and writes updated pixels into the backing `XImage`. Call this after modifying the buffer returned by `GGetImageData`. |
+| `GDeleteElement` | `void GDeleteElement(int index)` | Frees the element at `index` and sets its slot to `NULL`. For Image elements, the `XImage` and pixel buffers are also freed. |
+
+### Drawing Primitives
+
+All `GPrimitive*` functions operate on an Image element identified by `id`. Pass `-1` for `fg` or `bg` to leave those pixels unchanged.
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `GPrimitiveRect` | `void GPrimitiveRect(int id, int x, int y, int w, int h, int fg, int bg)` | Draws a rectangle outline in colour `fg` and fills the interior with colour `bg`. |
+| `GPrimitiveCircle` | `void GPrimitiveCircle(int id, int cx, int cy, int r, int fg, int bg)` | Draws a circle of radius `r` centred at `(cx, cy)`. The border ring is drawn in `fg`; the interior is filled with `bg`. |
+| `GPrimitiveLine` | `void GPrimitiveLine(int id, int x1, int y1, int x2, int y2, int color)` | Draws a straight line from `(x1, y1)` to `(x2, y2)` using Bresenham-style stepping in palette colour `color`. |
+| `GPrimitiveSprite` | `void GPrimitiveSprite(int id, int sx, int sy, int color, const char* sprite, int scale)` | Renders an RLE-encoded sprite at `(sx, sy)` using palette colour `color` and pixel scale factor `scale`. In the RLE format: `#` = filled pixel, `.` = transparent (palette index 0), `$` = newline, `>` = skip, digits prefix a repeat count, and `[…]` groups can be repeated. |
+
+### Event Handling
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `GEventAttachKey` | `void GEventAttachKey(void (*Key)(int key))` | Registers a callback invoked on every key-press event. The `key` argument is the X11 keysym for printable characters, or one of the `GKey*` constants for arrow and function keys. |
+| `GEventAttachClick` | `void GEventAttachClick(void (*Click)(int x, int y, int btn))` | Registers a callback invoked on every mouse button-press event. `x` and `y` are window-relative coordinates; `btn` is the X11 button number (1 = left, 2 = middle, 3 = right). |
+| `GEventAttachDelete` | `void GEventAttachDelete(int (*on_exit)())` | Registers a callback invoked when the window manager sends a close request. The callback's return value is used as the new `GWindowShouldClose` flag — return `1` to allow the close or `0` to cancel it. |
+
+### Mouse and Keyboard Query
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `GQueryMouse` | `void GQueryMouse(int* x, int* y, int* btn)` | Writes the current mouse cursor position into `*x` and `*y`, and the current button state bitmask into `*btn`. |
+| `GQueryKeyboard` | `unsigned char* GQueryKeyboard()` | Returns a pointer to the raw 8-byte pressed-key state array updated by `GHandleWindowEvents`. |
+| `GQueryKeyDown` | `int GQueryKeyDown(int ch)` | Returns non-zero if the key identified by `ch` is currently held down. Use `GKey*` constants for arrow and function keys, or a character literal for printable keys. |
+
+### Modal Dialogs
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `GSpawnModal` | `void GSpawnModal(int type, const char* msg, void (*on_confirm)())` | Spawns a modal dialog of the given `type` displaying `msg`. `on_confirm` is called when the user confirms the dialog. |
+| `GQueryModalOpen` | `int GQueryModalOpen()` | Returns non-zero if a modal dialog is currently active. |
+
+### Key Constants
+
+The following constants are defined in `libLWXGL.h` for use with `GEventAttachKey` and `GQueryKeyDown`:
+
+| Constant     | Value | Key              |
+|--------------|-------|------------------|
+| `GKeyLeft`   | `170` | Left arrow       |
+| `GKeyRight`  | `171` | Right arrow      |
+| `GKeyUp`     | `172` | Up arrow         |
+| `GKeyDown`   | `173` | Down arrow       |
+| `GKeyFnBase` | `150` | Function key base — add the function key number to get F1–Fn (e.g. `GKeyFnBase + 1` = F1) |
